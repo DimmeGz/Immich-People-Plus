@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Immich Extension",
+  "version": "1.0.0",
+  "description": "Extra features for self-hosted Immich",
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

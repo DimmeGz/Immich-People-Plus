@@ -1,0 +1,14 @@
+{
+  "name": "immich-extension",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/content/index.ts --bundle --outfile=dist/content.js --format=iife --target=es2022 && cp manifest.json dist/ && cp src/content.css dist/",
+    "watch": "npm run build -- --watch"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.2"
+  }
+}
