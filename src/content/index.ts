@@ -50,10 +50,7 @@ async function syncFolderFilter(): Promise<void> {
   }
 
   if (isFolderPhotoViewerPage()) {
-    if (folderController) {
-      deactivateFolderFilter(true);
-    }
-
+    folderController?.setBarVisible(false);
     activeFolderPath = folderPath;
     return;
   }
@@ -65,6 +62,7 @@ async function syncFolderFilter(): Promise<void> {
   }
 
   if (folderController && activeFolderPath === folderPath) {
+    folderController.setBarVisible(true);
     return;
   }
 

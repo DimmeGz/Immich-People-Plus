@@ -29,7 +29,7 @@ class FolderFilterController {
   async init(): Promise<void> {
     const hasGallery = await waitForGalleryAssets();
 
-    if (!hasGallery || this.#disposed || !isExtensionContextValid()) {
+    if ((!hasGallery && !document.querySelector('[data-immich-extension="filtered-gallery"]')) || this.#disposed || !isExtensionContextValid()) {
       return;
     }
 
@@ -61,6 +61,18 @@ class FolderFilterController {
 
     mountFolderFilterBar(this.#bar);
     this.#restoreSavedFilter();
+  }
+
+  setBarVisible(visible: boolean): void {
+    if (!this.#bar) {
+      return;
+    }
+
+    if (visible && !this.#bar.root.isConnected) {
+      mountFolderFilterBar(this.#bar);
+    }
+
+    this.#bar.setVisible(visible);
   }
 
   dispose(options: DisposeOptions = {}): void {

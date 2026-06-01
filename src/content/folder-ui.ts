@@ -5,6 +5,7 @@ export type FolderFilterBar = {
   root: HTMLElement;
   setFilter: (filter: FolderFilter) => void;
   setBusy: (busy: boolean) => void;
+  setVisible: (visible: boolean) => void;
 };
 
 type CreateFolderFilterBarOptions = {
@@ -130,6 +131,9 @@ export function createFolderFilterBar({
       for (const chip of chips.querySelectorAll('button')) {
         chip.disabled = busy;
       }
+    },
+    setVisible(visible) {
+      root.hidden = !visible;
     },
   };
 }
