@@ -1,54 +1,111 @@
+import {
+  createFolderFilterController,
+  isFolderAssetsPage,
+  isFolderPhotoViewerPage,
+  type FolderFilterController,
+} from './folder-filter';
+import { getFolderPathFromUrl } from './folder-utils';
 import { createPeopleSortController, isPeopleListPage, type PeopleSortController } from './people-sort';
 import { isExtensionContextValid } from './storage';
 
-let controller: PeopleSortController | null = null;
+let peopleController: PeopleSortController | null = null;
+let folderController: FolderFilterController | null = null;
+let activeFolderPath: string | null = null;
 
 function isImmichPeoplePage(): boolean {
   return isPeopleListPage(window.location.pathname) && Boolean(document.getElementById('user-page-header'));
 }
 
-async function activate(): Promise<void> {
-  if (controller || !isImmichPeoplePage() || !isExtensionContextValid()) {
+async function activatePeopleSort(): Promise<void> {
+  if (peopleController || !isImmichPeoplePage() || !isExtensionContextValid()) {
     return;
   }
 
-  controller = createPeopleSortController();
+  peopleController = createPeopleSortController();
 
   try {
-    await controller.init();
+    await peopleController.init();
   } catch {
-    deactivate();
+    deactivatePeopleSort();
   }
 }
 
-function deactivate(): void {
-  controller?.dispose();
-  controller = null;
+function deactivatePeopleSort(): void {
+  peopleController?.dispose();
+  peopleController = null;
+}
+
+function deactivateFolderFilter(preserveGallery = false): void {
+  folderController?.dispose({ preserveGallery });
+  folderController = null;
+}
+
+async function syncFolderFilter(): Promise<void> {
+  const folderPath = getFolderPathFromUrl();
+
+  if (!folderPath || !isExtensionContextValid()) {
+    deactivateFolderFilter();
+    activeFolderPath = null;
+    return;
+  }
+
+  if (isFolderPhotoViewerPage()) {
+    if (folderController) {
+      deactivateFolderFilter(true);
+    }
+
+    activeFolderPath = folderPath;
+    return;
+  }
+
+  if (!isFolderAssetsPage()) {
+    deactivateFolderFilter();
+    activeFolderPath = null;
+    return;
+  }
+
+  if (folderController && activeFolderPath === folderPath) {
+    return;
+  }
+
+  deactivateFolderFilter();
+  activeFolderPath = folderPath;
+  folderController = createFolderFilterController(folderPath);
+
+  try {
+    await folderController.init();
+  } catch {
+    deactivateFolderFilter();
+    activeFolderPath = null;
+  }
 }
 
 async function syncWithRoute(): Promise<void> {
   if (!isExtensionContextValid()) {
-    deactivate();
+    deactivatePeopleSort();
+    deactivateFolderFilter();
+    activeFolderPath = null;
     return;
   }
 
   if (isImmichPeoplePage()) {
-    await activate();
-    return;
+    await activatePeopleSort();
+  } else {
+    deactivatePeopleSort();
   }
 
-  deactivate();
+  await syncFolderFilter();
 }
 
 function watchRouteChanges(): void {
-  let currentPath = window.location.pathname;
+  let currentUrl = window.location.href;
 
   const handleRouteChange = () => {
-    if (window.location.pathname === currentPath) {
+    if (window.location.href === currentUrl) {
       return;
     }
 
-    currentPath = window.location.pathname;
+    currentUrl = window.location.href;
     void syncWithRoute();
   };
 
@@ -68,7 +125,7 @@ function watchRouteChanges(): void {
   };
 }
 
-function watchDomForPeoplePage(): void {
+function watchDomForImmichPages(): void {
   let timer: number | null = null;
 
   const observer = new MutationObserver(() => {
@@ -90,4 +147,4 @@ function watchDomForPeoplePage(): void {
 
 void syncWithRoute();
 watchRouteChanges();
-watchDomForPeoplePage();
+watchDomForImmichPages();

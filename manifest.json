@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Immich Extension",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Extra features for self-hosted Immich",
   "permissions": ["storage"],
   "content_scripts": [
