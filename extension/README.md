@@ -31,12 +31,14 @@ The bar is shown only when the URL has a `path` query parameter and the folder h
 
 ### Person card (`/people/{id}`) — optional
 
-If Person API is configured, each person page shows a **Person card** panel with:
+On a **person’s photo page** (`/people/<uuid>`), a **Person card** link appears on the same row as the Immich avatar and name (right side). Clicking it opens a modal with:
+
+If Person API is configured, the modal includes:
 
 - birth year / month / day
 - notes
 - multiple social links (label + URL)
-- tag assignment
+- tag assignment (create tags with **Add tag** if none exist yet)
 
 If Person API is not configured or unavailable, the extension keeps working without this panel.
 

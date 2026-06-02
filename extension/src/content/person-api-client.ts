@@ -66,6 +66,13 @@ export class PersonApiClient {
     return this.#request<{ tags: PersonTag[] }>('/tags');
   }
 
+  createTag(name: string): Promise<PersonTag> {
+    return this.#request<PersonTag>('/tags', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
   getBulkPersons(ids: string[]): Promise<{ persons: PersonCard[] }> {
     const query = new URLSearchParams({ ids: ids.join(',') }).toString();
     return this.#request<{ persons: PersonCard[] }>(`/persons/bulk/list?${query}`);

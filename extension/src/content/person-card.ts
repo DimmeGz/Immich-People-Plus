@@ -6,13 +6,68 @@ type PersonCardController = {
   dispose: () => void;
 };
 
+const TRIGGER_SELECTOR = '[data-immich-people-plus="person-card-trigger"]';
+const MODAL_SELECTOR = '[data-immich-people-plus="person-card-modal"]';
+
 function getPersonIdFromPath(pathname: string): string | null {
   const match = pathname.match(/^\/people\/([^/]+)/);
   return match?.[1] ?? null;
 }
 
-function isPersonPage(pathname: string): boolean {
-  return Boolean(getPersonIdFromPath(pathname));
+function findPersonInfoBlock(): HTMLElement | null {
+  const blocks = document.querySelectorAll<HTMLElement>('main div.relative.w-fit');
+
+  for (const block of blocks) {
+    if (block.querySelector('section.flex.place-items-center, section.flex.w-64')) {
+      return block;
+    }
+  }
+
+  return null;
+}
+
+function findPersonInfoSection(): HTMLElement | null {
+  const block = findPersonInfoBlock();
+  return block?.querySelector<HTMLElement>('section.flex') ?? null;
+}
+
+function waitForPersonInfoSection(timeoutMs = 15_000): Promise<HTMLElement | null> {
+  return new Promise((resolve) => {
+    const existing = findPersonInfoSection();
+
+    if (existing) {
+      resolve(existing);
+      return;
+    }
+
+    const startedAt = Date.now();
+
+    const observer = new MutationObserver(() => {
+      const section = findPersonInfoSection();
+
+      if (section) {
+        observer.disconnect();
+        resolve(section);
+      } else if (Date.now() - startedAt >= timeoutMs) {
+        observer.disconnect();
+        resolve(null);
+      }
+    });
+
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+
+    window.setTimeout(() => {
+      observer.disconnect();
+      resolve(findPersonInfoSection());
+    }, timeoutMs);
+  });
+}
+
+function closeModal(): void {
+  document.querySelector(MODAL_SELECTOR)?.remove();
 }
 
 function createSocialRow(link: SocialLink, onRemove: () => void): HTMLElement {
@@ -41,33 +96,71 @@ function createSocialRow(link: SocialLink, onRemove: () => void): HTMLElement {
   return row;
 }
 
-async function mountPersonCard(): Promise<PersonCardController | null> {
-  const personId = getPersonIdFromPath(window.location.pathname);
+function refreshTagOptions(select: HTMLSelectElement, tags: PersonTag[], selectedIds: Set<string>): void {
+  select.replaceChildren();
 
-  if (!personId) {
-    return null;
+  if (tags.length === 0) {
+    const empty = document.createElement('option');
+    empty.disabled = true;
+    empty.textContent = 'No tags yet — create one below';
+    select.appendChild(empty);
+    select.size = 2;
+    return;
   }
+
+  select.size = Math.min(6, Math.max(3, tags.length));
+
+  for (const tag of tags) {
+    const option = document.createElement('option');
+    option.value = tag.id;
+    option.textContent = tag.name;
+    option.selected = selectedIds.has(tag.id);
+    select.appendChild(option);
+  }
+}
+
+async function openPersonCardModal(personId: string): Promise<void> {
+  closeModal();
 
   const client = await PersonApiClient.create();
 
   if (!client) {
-    return null;
+    return;
   }
 
-  const pageHeader = document.getElementById('user-page-header');
+  const overlay = document.createElement('div');
+  overlay.className = 'immich-ext-person-card-modal';
+  overlay.setAttribute('data-immich-people-plus', 'person-card-modal');
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-labelledby', 'immich-ext-person-card-modal-title');
 
-  if (!pageHeader) {
-    return null;
-  }
+  const backdrop = document.createElement('button');
+  backdrop.type = 'button';
+  backdrop.className = 'immich-ext-person-card-modal__backdrop';
+  backdrop.setAttribute('aria-label', 'Close');
 
-  const host = pageHeader.parentElement ?? pageHeader;
-  const root = document.createElement('section');
-  root.className = 'immich-ext-person-card';
-  root.dataset.immichPeoplePlus = 'person-card';
+  const panel = document.createElement('div');
+  panel.className = 'immich-ext-person-card-modal__panel';
 
-  const title = document.createElement('h3');
-  title.className = 'immich-ext-person-card__title';
+  const header = document.createElement('div');
+  header.className = 'immich-ext-person-card-modal__header';
+
+  const title = document.createElement('h2');
+  title.id = 'immich-ext-person-card-modal-title';
+  title.className = 'immich-ext-person-card-modal__title';
   title.textContent = 'Person card';
+
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'immich-ext-person-card__chip';
+  closeButton.textContent = 'Close';
+  closeButton.addEventListener('click', closeModal);
+
+  header.append(title, closeButton);
+
+  const body = document.createElement('div');
+  body.className = 'immich-ext-person-card-modal__body';
 
   const yearInput = document.createElement('input');
   yearInput.type = 'number';
@@ -98,7 +191,20 @@ async function mountPersonCard(): Promise<PersonCardController | null> {
   const tagsSelect = document.createElement('select');
   tagsSelect.className = 'immich-ext-person-card__input';
   tagsSelect.multiple = true;
-  tagsSelect.size = 6;
+
+  const createTagRow = document.createElement('div');
+  createTagRow.className = 'immich-ext-person-card__create-tag';
+
+  const newTagInput = document.createElement('input');
+  newTagInput.className = 'immich-ext-person-card__input';
+  newTagInput.placeholder = 'New tag name';
+
+  const createTagButton = document.createElement('button');
+  createTagButton.type = 'button';
+  createTagButton.className = 'immich-ext-person-card__chip';
+  createTagButton.textContent = 'Add tag';
+
+  createTagRow.append(newTagInput, createTagButton);
 
   const addSocialButton = document.createElement('button');
   addSocialButton.type = 'button';
@@ -117,8 +223,31 @@ async function mountPersonCard(): Promise<PersonCardController | null> {
   grid.className = 'immich-ext-person-card__grid';
   grid.append(yearInput, monthInput, dayInput);
 
-  root.append(title, grid, notesInput, socialContainer, addSocialButton, tagsLabel, tagsSelect, saveButton, status);
-  host.appendChild(root);
+  body.append(
+    grid,
+    notesInput,
+    socialContainer,
+    addSocialButton,
+    tagsLabel,
+    tagsSelect,
+    createTagRow,
+    saveButton,
+    status,
+  );
+
+  panel.append(header, body);
+  overlay.append(backdrop, panel);
+  document.body.appendChild(overlay);
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      closeModal();
+    }
+  };
+
+  document.addEventListener('keydown', onKeyDown, { once: true });
+  backdrop.addEventListener('click', closeModal);
+  panel.addEventListener('click', (event) => event.stopPropagation());
 
   const socialRows: HTMLElement[] = [];
   const removeRow = (row: HTMLElement) => {
@@ -138,7 +267,9 @@ async function mountPersonCard(): Promise<PersonCardController | null> {
   addSocialButton.addEventListener('click', () => addRow({ url: '', label: '' }));
 
   let tags: PersonTag[] = [];
-  let existingCard: PersonCard | null = null;
+  const selectedTagIds = new Set<string>();
+
+  status.textContent = 'Loading...';
 
   try {
     const [tagsResponse, personCard] = await Promise.all([
@@ -147,34 +278,52 @@ async function mountPersonCard(): Promise<PersonCardController | null> {
     ]);
 
     tags = tagsResponse.tags;
-    existingCard = personCard;
+
+    if (personCard) {
+      yearInput.value = personCard.birthYear?.toString() ?? '';
+      monthInput.value = personCard.birthMonth?.toString() ?? '';
+      dayInput.value = personCard.birthDay?.toString() ?? '';
+      notesInput.value = personCard.notes ?? '';
+      for (const link of personCard.social) {
+        addRow(link);
+      }
+      for (const tag of personCard.tags) {
+        selectedTagIds.add(tag.id);
+      }
+    }
+
+    refreshTagOptions(tagsSelect, tags, selectedTagIds);
+    status.textContent = '';
   } catch (error) {
-    status.textContent = 'Failed to load card metadata';
+    status.textContent = 'Failed to load';
     console.error('[Immich People Plus] person-api load failed:', error);
-    return {
-      dispose: () => root.remove(),
-    };
   }
 
-  for (const tag of tags) {
-    const option = document.createElement('option');
-    option.value = tag.id;
-    option.textContent = tag.name;
-    tagsSelect.appendChild(option);
-  }
+  createTagButton.addEventListener('click', async () => {
+    const name = newTagInput.value.trim();
 
-  if (existingCard) {
-    yearInput.value = existingCard.birthYear?.toString() ?? '';
-    monthInput.value = existingCard.birthMonth?.toString() ?? '';
-    dayInput.value = existingCard.birthDay?.toString() ?? '';
-    notesInput.value = existingCard.notes ?? '';
-    for (const link of existingCard.social) {
-      addRow(link);
+    if (!name) {
+      status.textContent = 'Enter a tag name';
+      return;
     }
-    for (const option of tagsSelect.options) {
-      option.selected = existingCard.tags.some((tag) => tag.id === option.value);
+
+    createTagButton.disabled = true;
+    status.textContent = 'Creating tag...';
+
+    try {
+      const created = await client.createTag(name);
+      tags = [...tags, created].sort((a, b) => a.name.localeCompare(b.name));
+      selectedTagIds.add(created.id);
+      refreshTagOptions(tagsSelect, tags, selectedTagIds);
+      newTagInput.value = '';
+      status.textContent = `Tag "${created.name}" created`;
+    } catch (error) {
+      status.textContent = 'Could not create tag';
+      console.error('[Immich People Plus] create tag failed:', error);
+    } finally {
+      createTagButton.disabled = false;
     }
-  }
+  });
 
   saveButton.addEventListener('click', async () => {
     status.textContent = 'Saving...';
@@ -196,11 +345,13 @@ async function mountPersonCard(): Promise<PersonCardController | null> {
       social,
     };
 
-    const selectedTagIds = [...tagsSelect.selectedOptions].map((option) => option.value);
+    const tagIds = [...tagsSelect.selectedOptions]
+      .map((option) => option.value)
+      .filter((value) => value.length > 0);
 
     try {
       await client.upsertPerson(personId, payload);
-      await client.setPersonTags(personId, selectedTagIds);
+      await client.setPersonTags(personId, tagIds);
       status.textContent = 'Saved';
     } catch (error) {
       status.textContent = 'Save failed';
@@ -209,9 +360,55 @@ async function mountPersonCard(): Promise<PersonCardController | null> {
       saveButton.disabled = false;
     }
   });
+}
+
+function mountPersonCardTrigger(section: HTMLElement, personId: string): HTMLElement {
+  section.classList.add('immich-ext-person-card-row');
+  section.querySelector(TRIGGER_SELECTOR)?.remove();
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'immich-ext-person-card__trigger';
+  trigger.textContent = 'Person card';
+  trigger.setAttribute('data-immich-people-plus', 'person-card-trigger');
+
+  trigger.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void openPersonCardModal(personId);
+  });
+
+  section.appendChild(trigger);
+  return trigger;
+}
+
+async function mountPersonCard(): Promise<PersonCardController | null> {
+  const personId = getPersonIdFromPath(window.location.pathname);
+
+  if (!personId) {
+    return null;
+  }
+
+  const client = await PersonApiClient.create();
+
+  if (!client) {
+    return null;
+  }
+
+  const section = await waitForPersonInfoSection();
+
+  if (!section) {
+    return null;
+  }
+
+  const trigger = mountPersonCardTrigger(section, personId);
 
   return {
-    dispose: () => root.remove(),
+    dispose: () => {
+      closeModal();
+      trigger.remove();
+      section.classList.remove('immich-ext-person-card-row');
+    },
   };
 }
 
@@ -241,5 +438,5 @@ export async function syncPersonCard(): Promise<void> {
 
   controller?.dispose();
   controller = await mountPersonCard();
-  activePersonId = personId;
+  activePersonId = controller ? personId : null;
 }
