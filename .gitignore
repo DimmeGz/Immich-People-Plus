@@ -8,5 +8,6 @@ dist/
 *.db
 *.sqlite
 *.sqlite3
+person-api/data/
 
 .DS_Store

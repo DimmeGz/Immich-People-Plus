@@ -1,0 +1,11 @@
+services:
+  immich-people-plus-api:
+    build: .
+    container_name: immich-people-plus-api
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-3001}:3001"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

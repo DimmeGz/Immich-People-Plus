@@ -1,12 +1,12 @@
-# Immich Extension
+# Immich People Plus
 
-Tools for a self-hosted [Immich](https://immich.app/) instance: a Chrome extension and (planned) a person metadata API.
+Tools for a self-hosted [Immich](https://immich.app/) instance: a Chrome extension and a sidecar person metadata API.
 
 ## Repository layout
 
 ```
 extension/     Chrome extension (content scripts)
-person-api/    Person cards, tags, and metadata API (planned)
+person-api/    Person cards, tags, and metadata API (SQLite)
 ```
 
 ## Chrome extension
@@ -25,9 +25,27 @@ npm run build
 
 Load **`extension/dist/`** as an unpacked extension in Chrome (`chrome://extensions`).
 
-## Person API
+## Person API (immich-people-plus-api)
 
-The `person-api/` service will store extended person data (birth year, notes, social links, tags) keyed by Immich person IDs. Not implemented yet.
+The `person-api/` service stores extended person data (birth year/month/day, notes, multiple social links, tags) keyed by Immich person IDs.
+
+Quick start:
+
+```bash
+cd person-api
+npm install
+cp .env.example .env
+npm start
+```
+
+## Manual test checklist
+
+- Start API and verify `GET /health` returns `ok: true`
+- Open extension options and set Person API URL + API key
+- On `/people/{id}`, edit person card fields and save
+- On `/folders?path=...`, use person and tag filters
+- Open and close a photo viewer and confirm active filter persists
+- Clear API settings and verify extension still works without person-api
 
 ## Requirements
 
