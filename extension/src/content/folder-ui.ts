@@ -13,6 +13,7 @@ type CreateFolderFilterBarOptions = {
   otherPhotosCount: number;
   tags?: Array<{ id: string; name: string; count: number }>;
   onFilterChange: (filter: FolderFilter) => void;
+  onTagOtherPhotos?: () => void;
 };
 
 function createChipButton(label: string, title: string, onClick: () => void): HTMLButtonElement {
@@ -63,6 +64,7 @@ export function createFolderFilterBar({
   otherPhotosCount,
   tags = [],
   onFilterChange,
+  onTagOtherPhotos,
 }: CreateFolderFilterBarOptions): FolderFilterBar {
   const root = document.createElement('div');
   root.className = 'immich-ext-folder-filter';
@@ -100,6 +102,17 @@ export function createFolderFilterBar({
     );
     othersButton.dataset.filter = 'others';
     chips.appendChild(othersButton);
+
+    if (onTagOtherPhotos) {
+      const tagOthersButton = createChipButton(
+        'Tag other photos',
+        'Assign a person to all photos without detected faces in this folder',
+        onTagOtherPhotos,
+      );
+      tagOthersButton.dataset.action = 'tag-other-photos';
+      tagOthersButton.classList.add('immich-ext-folder-filter__chip--action');
+      chips.appendChild(tagOthersButton);
+    }
   }
 
   for (const tag of tags) {

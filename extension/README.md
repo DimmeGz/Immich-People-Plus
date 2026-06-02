@@ -25,6 +25,7 @@ When you open a folder with direct photo files (not subfolders), a **People** ba
 
 - **Person chips** — avatar, name, and photo count in this folder
 - **Other photos** — photos without assigned people
+- **Tag other photos** — opens a modal to assign a person to all photos in the folder with no detected faces (uses Immich’s face API)
 - **Tag chips** — optional, if person-api is configured
 - **Show all** — resets the filter
 

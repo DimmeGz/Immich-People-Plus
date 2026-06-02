@@ -5,11 +5,13 @@ import {
   showFilteredGallery,
   waitForGalleryAssets,
 } from './folder-gallery';
+import { openTagOtherPhotosModal } from './folder-tag-others-modal';
 import { PersonApiClient } from './person-api-client';
 import {
   buildPersonSummaries,
   countOtherPhotos,
   getFolderPathFromUrl,
+  getOtherPhotoAssets,
   getVisibleAssetIds,
   isFoldersPage,
 } from './folder-utils';
@@ -55,24 +57,7 @@ class FolderFilterController {
       return;
     }
 
-    const people = buildPersonSummaries(this.#assets);
-    const otherPhotosCount = countOtherPhotos(this.#assets);
-    await this.#loadTagData(people.map((summary) => summary.person.id));
-
-    if (people.length === 0 && otherPhotosCount === 0) {
-      return;
-    }
-
-    this.#bar = createFolderFilterBar({
-      people,
-      otherPhotosCount,
-      tags: this.#tagCounts,
-      onFilterChange: (filter) => {
-        this.#setFilter(filter);
-      },
-    });
-
-    mountFolderFilterBar(this.#bar);
+    await this.#buildBar();
     this.#restoreSavedFilter();
   }
 
@@ -103,6 +88,65 @@ class FolderFilterController {
     }
   }
 
+  async #buildBar(): Promise<void> {
+    const people = buildPersonSummaries(this.#assets);
+    const otherPhotosCount = countOtherPhotos(this.#assets);
+    await this.#loadTagData(people.map((summary) => summary.person.id));
+
+    if (people.length === 0 && otherPhotosCount === 0) {
+      if (this.#bar) {
+        unmountFolderFilterBar(this.#bar);
+        this.#bar = null;
+      }
+
+      return;
+    }
+
+    if (this.#bar) {
+      unmountFolderFilterBar(this.#bar);
+    }
+
+    this.#bar = createFolderFilterBar({
+      people,
+      otherPhotosCount,
+      tags: this.#tagCounts,
+      onFilterChange: (filter) => {
+        this.#setFilter(filter);
+      },
+      onTagOtherPhotos: otherPhotosCount > 0 ? () => this.#openTagOtherPhotosModal() : undefined,
+    });
+
+    mountFolderFilterBar(this.#bar);
+    this.#bar.setFilter(this.#filter);
+  }
+
+  #openTagOtherPhotosModal(): void {
+    const otherAssets = getOtherPhotoAssets(this.#assets);
+
+    openTagOtherPhotosModal({
+      otherAssets,
+      onComplete: () => this.#reloadAfterTagOthers(),
+    });
+  }
+
+  async #reloadAfterTagOthers(): Promise<void> {
+    if (this.#disposed) {
+      return;
+    }
+
+    this.#bar?.setBusy(true);
+
+    try {
+      this.#assets = await fetchFolderAssets(this.#folderPath);
+      await this.#buildBar();
+      this.#applyCurrentFilter();
+    } catch (error) {
+      console.error('[Immich People Plus] Failed to reload folder after tagging:', error);
+    } finally {
+      this.#bar?.setBusy(false);
+    }
+  }
+
   #restoreSavedFilter(): void {
     const savedFilter = loadFolderFilter(this.#folderPath);
 
@@ -117,6 +161,8 @@ class FolderFilterController {
 
     if (visibleAssetIds.size === 0) {
       saveFolderFilter(this.#folderPath, { type: 'all' });
+      this.#filter = { type: 'all' };
+      this.#bar?.setFilter({ type: 'all' });
       return;
     }
 

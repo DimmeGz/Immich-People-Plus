@@ -44,7 +44,7 @@ npm start
 - Open extension options and set Person API URL + API key
 - On `/people`, use Tag and Sort dropdowns (tag filter needs Person API)
 - On `/people/{id}`, edit person card fields and save
-- On `/folders?path=...`, use person and tag filters
+- On `/folders?path=...`, use person and tag filters; try **Tag other photos** on a folder with unrecognized faces
 - Open and close a photo viewer and confirm active filter persists
 - Clear API settings and verify extension still works without person-api
 

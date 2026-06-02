@@ -62,8 +62,12 @@ export function buildPersonSummaries(assets: FolderAsset[]): FolderPersonSummary
     });
 }
 
+export function getOtherPhotoAssets(assets: FolderAsset[]): FolderAsset[] {
+  return assets.filter((asset) => asset.people.length === 0);
+}
+
 export function countOtherPhotos(assets: FolderAsset[]): number {
-  return assets.filter((asset) => asset.people.length === 0).length;
+  return getOtherPhotoAssets(assets).length;
 }
 
 export function getVisibleAssetIds(assets: FolderAsset[], filter: FolderFilter): Set<string> {
