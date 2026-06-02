@@ -37,6 +37,7 @@ export type PeoplePageResponse = {
 };
 
 export const STORAGE_KEY = 'immichPeoplePlus.peopleSortMode';
+export const PEOPLE_TAG_FILTER_KEY = 'immichPeoplePlus.peopleTagFilter';
 
 export const FOLDER_FILTER_STORAGE_PREFIX = 'immichPeoplePlus.folderFilter.';
 export const PERSON_API_SETTINGS_KEY = 'immichPeoplePlus.personApiSettings';

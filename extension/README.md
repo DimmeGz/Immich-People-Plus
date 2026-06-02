@@ -6,15 +6,18 @@ Content scripts that add optional features to a self-hosted Immich web UI.
 
 ### People page sorting (`/people`)
 
-Adds a **Sort** dropdown to the people list header:
+Adds **Tag** (optional, requires Person API) and **Sort** dropdowns to the people list header:
 
-- **Default** — Immich's built-in order (unchanged)
-- **Name A→Z** — custom grid sorted by name
-- **Name Z→A** — reverse name sort
+- **Tag → All tags** — show everyone (Immich default when Sort is also Default)
+- **Tag → …** — show only people assigned that tag in Person API
+- **Sort → Default** — Immich's built-in order (unchanged when no tag filter)
+- **Sort → Name A→Z / Z→A** — custom grid sorted by name
 
-Unnamed people are placed at the end. Your choice is saved in extension storage and restored on the next visit.
+Tag and sort can be combined: filter by tag first, then apply name order on the custom grid.
 
-When switching back to **Default**, the page reloads to restore Immich's original grid and infinite scroll.
+Unnamed people are placed at the end when name sorting is active. Your choices are saved in extension storage and restored on the next visit.
+
+When switching back to **Default** sort with **All tags**, the page reloads to restore Immich's original grid and infinite scroll.
 
 ### Folder people filter (`/folders?path=...`)
 

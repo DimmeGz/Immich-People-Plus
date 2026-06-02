@@ -1,6 +1,7 @@
 import { normalizeFolderPath } from './folder-utils';
 import {
   FOLDER_FILTER_STORAGE_PREFIX,
+  PEOPLE_TAG_FILTER_KEY,
   PERSON_API_SETTINGS_KEY,
   STORAGE_KEY,
   type FolderFilter,
@@ -89,6 +90,59 @@ export async function savePeopleSortMode(mode: PeopleSortMode): Promise<void> {
 
   try {
     await chrome.storage.local.set({ [STORAGE_KEY]: mode });
+  } catch {
+    // Keep working in this tab via sessionStorage only.
+  }
+}
+
+function parseTagFilter(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export async function loadPeopleTagFilter(): Promise<string | null> {
+  const sessionTagId = parseTagFilter(sessionStorage.getItem(PEOPLE_TAG_FILTER_KEY));
+
+  if (sessionTagId) {
+    return sessionTagId;
+  }
+
+  if (!isExtensionContextValid()) {
+    return null;
+  }
+
+  try {
+    const stored = await chrome.storage.local.get(PEOPLE_TAG_FILTER_KEY);
+    const tagId = parseTagFilter(stored[PEOPLE_TAG_FILTER_KEY]);
+
+    if (tagId) {
+      sessionStorage.setItem(PEOPLE_TAG_FILTER_KEY, tagId);
+      return tagId;
+    }
+  } catch {
+    // Extension was reloaded while this tab stayed open.
+  }
+
+  return null;
+}
+
+export async function savePeopleTagFilter(tagId: string | null): Promise<void> {
+  if (tagId) {
+    sessionStorage.setItem(PEOPLE_TAG_FILTER_KEY, tagId);
+  } else {
+    sessionStorage.removeItem(PEOPLE_TAG_FILTER_KEY);
+  }
+
+  if (!isExtensionContextValid()) {
+    return;
+  }
+
+  try {
+    await chrome.storage.local.set({ [PEOPLE_TAG_FILTER_KEY]: tagId ?? '' });
   } catch {
     // Keep working in this tab via sessionStorage only.
   }

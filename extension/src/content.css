@@ -15,6 +15,11 @@
   color: #a1a1aa;
 }
 
+.immich-ext-people-sort__select--tag {
+  min-width: 10rem;
+  max-width: 14rem;
+}
+
 .immich-ext-people-sort__select {
   min-width: 9rem;
   height: 2rem;
