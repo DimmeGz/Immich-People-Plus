@@ -58,7 +58,7 @@ export function getNameFromCard(element: Element): string {
     return input.value.trim();
   }
 
-  const nameElement = element.querySelector('[data-immich-extension="person-name"]');
+  const nameElement = element.querySelector('[data-immich-people-plus="person-name"]');
 
   if (nameElement?.textContent) {
     return nameElement.textContent.trim();
@@ -84,7 +84,7 @@ export function getGridPersonIds(): string[] {
   }
 
   const main = header.closest('main');
-  const grid = main?.querySelector('.grid.grid-cols-2:not([data-immich-extension="sorted-people-grid"])');
+  const grid = main?.querySelector('.grid.grid-cols-2:not([data-immich-people-plus="sorted-people-grid"])');
 
   if (!grid) {
     return [];
@@ -107,7 +107,7 @@ export function reorderGridFromDom(order: 'asc' | 'desc'): boolean {
   }
 
   const main = header.closest('main');
-  const grid = main?.querySelector('.grid.grid-cols-2:not([data-immich-extension="sorted-people-grid"])');
+  const grid = main?.querySelector('.grid.grid-cols-2:not([data-immich-people-plus="sorted-people-grid"])');
 
   if (!grid) {
     return false;

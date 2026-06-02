@@ -1,10 +1,16 @@
 import { normalizeFolderPath } from './folder-utils';
 import {
   FOLDER_FILTER_STORAGE_PREFIX,
+  PERSON_API_SETTINGS_KEY,
   STORAGE_KEY,
   type FolderFilter,
   type PeopleSortMode,
 } from './types';
+
+export type PersonApiSettings = {
+  baseUrl: string;
+  apiKey: string;
+};
 
 function getFolderFilterStorageKey(folderPath: string): string {
   return `${FOLDER_FILTER_STORAGE_PREFIX}${normalizeFolderPath(folderPath)}`;
@@ -22,6 +28,10 @@ function parseFolderFilter(value: unknown): FolderFilter | null {
   }
 
   if (filter.type === 'person' && typeof filter.personId === 'string') {
+    return filter;
+  }
+
+  if (filter.type === 'tag' && typeof filter.tagId === 'string') {
     return filter;
   }
 
@@ -107,4 +117,69 @@ export function saveFolderFilter(folderPath: string, filter: FolderFilter): void
   }
 
   sessionStorage.setItem(key, JSON.stringify(filter));
+}
+
+function parsePersonApiSettings(value: unknown): PersonApiSettings | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const settings = value as Partial<PersonApiSettings>;
+
+  if (typeof settings.baseUrl !== 'string' || typeof settings.apiKey !== 'string') {
+    return null;
+  }
+
+  return {
+    baseUrl: settings.baseUrl.trim(),
+    apiKey: settings.apiKey.trim(),
+  };
+}
+
+export async function loadPersonApiSettings(): Promise<PersonApiSettings | null> {
+  const sessionRaw = sessionStorage.getItem(PERSON_API_SETTINGS_KEY);
+
+  if (sessionRaw) {
+    try {
+      const parsed = parsePersonApiSettings(JSON.parse(sessionRaw));
+      if (parsed) {
+        return parsed;
+      }
+    } catch {
+      // ignore invalid session value
+    }
+  }
+
+  if (!isExtensionContextValid()) {
+    return null;
+  }
+
+  try {
+    const stored = await chrome.storage.local.get(PERSON_API_SETTINGS_KEY);
+    const parsed = parsePersonApiSettings(stored[PERSON_API_SETTINGS_KEY]);
+
+    if (!parsed) {
+      return null;
+    }
+
+    sessionStorage.setItem(PERSON_API_SETTINGS_KEY, JSON.stringify(parsed));
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export async function savePersonApiSettings(settings: PersonApiSettings): Promise<void> {
+  const normalized: PersonApiSettings = {
+    baseUrl: settings.baseUrl.trim().replace(/\/$/, ''),
+    apiKey: settings.apiKey.trim(),
+  };
+
+  sessionStorage.setItem(PERSON_API_SETTINGS_KEY, JSON.stringify(normalized));
+
+  if (!isExtensionContextValid()) {
+    return;
+  }
+
+  await chrome.storage.local.set({ [PERSON_API_SETTINGS_KEY]: normalized });
 }

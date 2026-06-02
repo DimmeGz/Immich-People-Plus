@@ -8,6 +8,27 @@ export type Person = {
   isFavorite?: boolean;
 };
 
+export type SocialLink = {
+  label?: string | null;
+  url: string;
+};
+
+export type PersonTag = {
+  id: string;
+  name: string;
+  color?: string | null;
+};
+
+export type PersonCard = {
+  id: string;
+  birthYear?: number | null;
+  birthMonth?: number | null;
+  birthDay?: number | null;
+  notes?: string | null;
+  social: SocialLink[];
+  tags: PersonTag[];
+};
+
 export type PeoplePageResponse = {
   people: Person[];
   hasNextPage: boolean;
@@ -15,9 +36,10 @@ export type PeoplePageResponse = {
   hidden: number;
 };
 
-export const STORAGE_KEY = 'immichExtension.peopleSortMode';
+export const STORAGE_KEY = 'immichPeoplePlus.peopleSortMode';
 
-export const FOLDER_FILTER_STORAGE_PREFIX = 'immichExtension.folderFilter.';
+export const FOLDER_FILTER_STORAGE_PREFIX = 'immichPeoplePlus.folderFilter.';
+export const PERSON_API_SETTINGS_KEY = 'immichPeoplePlus.personApiSettings';
 
 export const SEARCH_PARAM = 'searchedPeople';
 
@@ -41,4 +63,5 @@ export type FolderPersonSummary = {
 export type FolderFilter =
   | { type: 'all' }
   | { type: 'person'; personId: string }
-  | { type: 'others' };
+  | { type: 'others' }
+  | { type: 'tag'; tagId: string };

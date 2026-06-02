@@ -18,7 +18,7 @@ const SORT_OPTIONS: Array<{ value: PeopleSortMode; label: string }> = [
 export function createSortControl(initialMode: PeopleSortMode): SortControl {
   const root = document.createElement('div');
   root.className = 'immich-ext-people-sort';
-  root.dataset.immichExtension = 'people-sort';
+  root.dataset.immichPeoplePlus = 'people-sort';
 
   const label = document.createElement('span');
   label.className = 'immich-ext-people-sort__label';

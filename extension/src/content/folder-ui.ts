@@ -11,6 +11,7 @@ export type FolderFilterBar = {
 type CreateFolderFilterBarOptions = {
   people: FolderPersonSummary[];
   otherPhotosCount: number;
+  tags?: Array<{ id: string; name: string; count: number }>;
   onFilterChange: (filter: FolderFilter) => void;
 };
 
@@ -60,11 +61,12 @@ function createPersonChip(summary: FolderPersonSummary, onClick: () => void): HT
 export function createFolderFilterBar({
   people,
   otherPhotosCount,
+  tags = [],
   onFilterChange,
 }: CreateFolderFilterBarOptions): FolderFilterBar {
   const root = document.createElement('div');
   root.className = 'immich-ext-folder-filter';
-  root.dataset.immichExtension = 'folder-filter';
+  root.dataset.immichPeoplePlus = 'folder-filter';
 
   const label = document.createElement('span');
   label.className = 'immich-ext-folder-filter__title';
@@ -100,6 +102,18 @@ export function createFolderFilterBar({
     chips.appendChild(othersButton);
   }
 
+  for (const tag of tags) {
+    const tagButton = createChipButton(
+      `${tag.name} (${tag.count})`,
+      `Photos tagged with ${tag.name}`,
+      () => {
+        onFilterChange({ type: 'tag', tagId: tag.id });
+      },
+    );
+    tagButton.dataset.filter = `tag:${tag.id}`;
+    chips.appendChild(tagButton);
+  }
+
   root.append(label, chips);
 
   const setActiveChip = (filter: FolderFilter) => {
@@ -118,6 +132,13 @@ export function createFolderFilterBar({
 
     if (filter.type === 'others') {
       chips.querySelector<HTMLButtonElement>('[data-filter="others"]')?.classList.add(
+        'immich-ext-folder-filter__chip--active',
+      );
+      return;
+    }
+
+    if (filter.type === 'tag') {
+      chips.querySelector<HTMLButtonElement>(`[data-filter="tag:${filter.tagId}"]`)?.classList.add(
         'immich-ext-folder-filter__chip--active',
       );
     }

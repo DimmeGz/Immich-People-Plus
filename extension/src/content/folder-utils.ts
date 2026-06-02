@@ -77,6 +77,10 @@ export function getVisibleAssetIds(assets: FolderAsset[], filter: FolderFilter):
     );
   }
 
+  if (filter.type === 'tag') {
+    return new Set();
+  }
+
   return new Set(assets.filter((asset) => asset.people.length === 0).map((asset) => asset.id));
 }
 

@@ -6,6 +6,7 @@ import {
 } from './folder-filter';
 import { getFolderPathFromUrl } from './folder-utils';
 import { createPeopleSortController, isPeopleListPage, type PeopleSortController } from './people-sort';
+import { syncPersonCard } from './person-card';
 import { isExtensionContextValid } from './storage';
 
 let peopleController: PeopleSortController | null = null;
@@ -92,6 +93,7 @@ async function syncWithRoute(): Promise<void> {
     deactivatePeopleSort();
   }
 
+  await syncPersonCard();
   await syncFolderFilter();
 }
 

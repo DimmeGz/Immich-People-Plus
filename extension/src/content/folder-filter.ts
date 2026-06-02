@@ -1,5 +1,11 @@
 import { fetchFolderAssets } from './folder-api';
-import { clearFilteredGallery, showFilteredGallery, waitForGalleryAssets } from './folder-gallery';
+import {
+  clearFilteredGallery,
+  resetFilteredGalleryState,
+  showFilteredGallery,
+  waitForGalleryAssets,
+} from './folder-gallery';
+import { PersonApiClient } from './person-api-client';
 import {
   buildPersonSummaries,
   countOtherPhotos,
@@ -21,6 +27,9 @@ class FolderFilterController {
   #filter: FolderFilter = { type: 'all' };
   #bar: FolderFilterBar | null = null;
   #disposed = false;
+  #personApiClient: PersonApiClient | null = null;
+  #tagPersonIds = new Map<string, Set<string>>();
+  #tagCounts: Array<{ id: string; name: string; count: number }> = [];
 
   constructor(folderPath: string) {
     this.#folderPath = folderPath;
@@ -29,14 +38,16 @@ class FolderFilterController {
   async init(): Promise<void> {
     const hasGallery = await waitForGalleryAssets();
 
-    if ((!hasGallery && !document.querySelector('[data-immich-extension="filtered-gallery"]')) || this.#disposed || !isExtensionContextValid()) {
+    if ((!hasGallery && !document.querySelector('[data-immich-people-plus="filtered-gallery"]')) || this.#disposed || !isExtensionContextValid()) {
       return;
     }
+
+    this.#personApiClient = await PersonApiClient.create();
 
     try {
       this.#assets = await fetchFolderAssets(this.#folderPath);
     } catch (error) {
-      console.error('[Immich Extension] Failed to load folder people:', error);
+      console.error('[Immich People Plus] Failed to load folder people:', error);
       return;
     }
 
@@ -46,6 +57,7 @@ class FolderFilterController {
 
     const people = buildPersonSummaries(this.#assets);
     const otherPhotosCount = countOtherPhotos(this.#assets);
+    await this.#loadTagData(people.map((summary) => summary.person.id));
 
     if (people.length === 0 && otherPhotosCount === 0) {
       return;
@@ -54,6 +66,7 @@ class FolderFilterController {
     this.#bar = createFolderFilterBar({
       people,
       otherPhotosCount,
+      tags: this.#tagCounts,
       onFilterChange: (filter) => {
         this.#setFilter(filter);
       },
@@ -84,6 +97,8 @@ class FolderFilterController {
     }
 
     if (!options.preserveGallery) {
+      resetFilteredGalleryState();
+    } else {
       clearFilteredGallery();
     }
   }
@@ -95,7 +110,10 @@ class FolderFilterController {
       return;
     }
 
-    const visibleAssetIds = getVisibleAssetIds(this.#assets, savedFilter);
+    const visibleAssetIds =
+      savedFilter.type === 'tag'
+        ? this.#getVisibleIdsByTag(savedFilter.tagId)
+        : getVisibleAssetIds(this.#assets, savedFilter);
 
     if (visibleAssetIds.size === 0) {
       saveFolderFilter(this.#folderPath, { type: 'all' });
@@ -120,7 +138,10 @@ class FolderFilterController {
       return;
     }
 
-    const visibleAssetIds = getVisibleAssetIds(this.#assets, this.#filter);
+    const visibleAssetIds =
+      this.#filter.type === 'tag'
+        ? this.#getVisibleIdsByTag(this.#filter.tagId)
+        : getVisibleAssetIds(this.#assets, this.#filter);
     const visibleAssets = this.#assets.filter((asset) => visibleAssetIds.has(asset.id));
 
     if (visibleAssets.length === 0) {
@@ -129,6 +150,64 @@ class FolderFilterController {
     }
 
     showFilteredGallery(visibleAssets, this.#folderPath);
+  }
+
+  #getVisibleIdsByTag(tagId: string): Set<string> {
+    const peopleWithTag = this.#tagPersonIds.get(tagId);
+
+    if (!peopleWithTag || peopleWithTag.size === 0) {
+      return new Set();
+    }
+
+    return new Set(
+      this.#assets
+        .filter((asset) => asset.people.some((person) => peopleWithTag.has(person.id)))
+        .map((asset) => asset.id),
+    );
+  }
+
+  async #loadTagData(personIds: string[]): Promise<void> {
+    if (!this.#personApiClient || personIds.length === 0) {
+      this.#tagPersonIds.clear();
+      this.#tagCounts = [];
+      return;
+    }
+
+    try {
+      const response = await this.#personApiClient.getBulkPersons(personIds);
+      const tagsMap = new Map<string, { id: string; name: string; personIds: Set<string> }>();
+
+      for (const person of response.persons) {
+        for (const tag of person.tags) {
+          let entry = tagsMap.get(tag.id);
+
+          if (!entry) {
+            entry = { id: tag.id, name: tag.name, personIds: new Set<string>() };
+            tagsMap.set(tag.id, entry);
+          }
+
+          entry.personIds.add(person.id);
+        }
+      }
+
+      this.#tagPersonIds.clear();
+      this.#tagCounts = [];
+
+      for (const entry of tagsMap.values()) {
+        this.#tagPersonIds.set(entry.id, entry.personIds);
+        const count = this.#assets.filter((asset) =>
+          asset.people.some((person) => entry!.personIds.has(person.id)),
+        ).length;
+
+        if (count > 0) {
+          this.#tagCounts.push({ id: entry.id, name: entry.name, count });
+        }
+      }
+    } catch (error) {
+      console.error('[Immich People Plus] Failed to load person-api tags:', error);
+      this.#tagPersonIds.clear();
+      this.#tagCounts = [];
+    }
   }
 }
 

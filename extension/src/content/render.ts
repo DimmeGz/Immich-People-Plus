@@ -15,7 +15,7 @@ function createPersonCard(person: Person): HTMLElement {
   const wrapper = document.createElement('div');
   wrapper.className =
     'rounded-xl border-2 border-transparent p-2 transition-all hover:border-immich-primary/50 hover:bg-gray-200 hover:shadow-sm hover:dark:border-immich-dark-primary/25 dark:hover:bg-immich-dark-primary/20';
-  wrapper.dataset.immichExtension = 'person-card';
+  wrapper.dataset.immichPeoplePlus = 'person-card';
 
   const card = document.createElement('div');
   card.className = 'relative';
@@ -59,7 +59,7 @@ export function renderSortedGrid(people: Person[]): HTMLElement {
   const grid = document.createElement('div');
   grid.className =
     'grid w-full grid-cols-2 items-start gap-1 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7 2xl:grid-cols-10';
-  grid.dataset.immichExtension = 'sorted-people-grid';
+  grid.dataset.immichPeoplePlus = 'sorted-people-grid';
 
   for (const person of people) {
     grid.appendChild(createPersonCard(person));
@@ -69,7 +69,7 @@ export function renderSortedGrid(people: Person[]): HTMLElement {
 }
 
 export function removeExtensionGrid(): void {
-  document.querySelector('[data-immich-extension="sorted-people-grid"]')?.remove();
+  document.querySelector('[data-immich-people-plus="sorted-people-grid"]')?.remove();
 }
 
 export function setOriginalGridHidden(hidden: boolean): void {
@@ -99,7 +99,7 @@ export function getPeopleGrid(): HTMLElement | null {
   }
 
   const main = header.closest('main');
-  return main?.querySelector('.grid.grid-cols-2:not([data-immich-extension="sorted-people-grid"])') ?? null;
+  return main?.querySelector('.grid.grid-cols-2:not([data-immich-people-plus="sorted-people-grid"])') ?? null;
 }
 
 export function getScrollContainer(): HTMLElement | null {

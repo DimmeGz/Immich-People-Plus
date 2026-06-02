@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Immich People Plus Settings</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        margin: 24px;
+        max-width: 720px;
+      }
+      label {
+        display: block;
+        margin: 0 0 6px;
+        font-weight: 600;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px;
+        border: 1px solid #d4d4d8;
+        border-radius: 8px;
+        margin-bottom: 16px;
+      }
+      button {
+        border: 1px solid #d4d4d8;
+        border-radius: 8px;
+        padding: 8px 12px;
+        background: #fff;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      #status {
+        margin-top: 12px;
+        color: #3f3f46;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Immich People Plus Settings</h1>
+    <p>Person API is optional. Leave fields empty to keep extension in standalone mode.</p>
+    <label for="baseUrl">Person API Base URL</label>
+    <input id="baseUrl" placeholder="http://localhost:3001" />
+    <label for="apiKey">Person API Key</label>
+    <input id="apiKey" type="password" placeholder="change-me" />
+    <div>
+      <button id="saveBtn">Save</button>
+      <button id="testBtn" type="button">Test connection</button>
+    </div>
+    <div id="status"></div>
+    <script src="./options.js"></script>
+  </body>
+  </html>

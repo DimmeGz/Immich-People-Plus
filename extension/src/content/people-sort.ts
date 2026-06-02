@@ -88,7 +88,7 @@ class PeopleSortController {
 
       getScrollContainer()?.scrollTo(0, 0);
     } catch (error) {
-      console.error('[Immich Extension] Failed to sort people:', error);
+      console.error('[Immich People Plus] Failed to sort people:', error);
       this.#control?.setBusy(false, 'Sort failed');
       window.setTimeout(() => this.#control?.setBusy(false), 2000);
       return;

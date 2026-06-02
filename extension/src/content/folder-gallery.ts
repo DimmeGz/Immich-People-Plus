@@ -1,8 +1,12 @@
 import createJustifiedLayout from 'justified-layout';
 import type { FolderAsset } from './types';
 
-const FILTERED_GALLERY_SELECTOR = '[data-immich-extension="filtered-gallery"]';
-const HIDDEN_GALLERY_ATTR = 'data-immich-extension-gallery-hidden';
+const FILTERED_GALLERY_SELECTOR = '[data-immich-people-plus="filtered-gallery"]';
+const ORIGINAL_GALLERY_ATTR = 'data-immich-people-plus-original-gallery';
+const HIDDEN_GALLERY_ATTR = 'data-immich-people-plus-gallery-hidden';
+
+/** Immich gallery mount cached before hide (thumbnails unmount while hidden). */
+let cachedImmichGalleryWrapper: HTMLElement | null = null;
 
 function getAssetThumbnailUrl(asset: FolderAsset): string {
   const params = new URLSearchParams({ size: 'thumbnail' });
@@ -24,7 +28,17 @@ function getGallerySection(): HTMLElement | null {
   return section instanceof HTMLElement ? section : null;
 }
 
-function getImmichGalleryWrapper(): HTMLElement | null {
+function isFilteredGalleryMount(element: Element): boolean {
+  return element instanceof HTMLElement && element.dataset.immichPeoplePlus === 'filtered-gallery';
+}
+
+function findImmichGalleryWrapper(): HTMLElement | null {
+  const marked = document.querySelector(`[${ORIGINAL_GALLERY_ATTR}]`);
+
+  if (marked instanceof HTMLElement && !isFilteredGalleryMount(marked)) {
+    return marked;
+  }
+
   const section = getGallerySection();
 
   if (!section) {
@@ -32,16 +46,47 @@ function getImmichGalleryWrapper(): HTMLElement | null {
   }
 
   for (const mount of section.querySelectorAll('.mt-2')) {
-    if (mount.querySelector('[data-asset], .relative')) {
-      return mount instanceof HTMLElement ? mount : null;
+    if (!(mount instanceof HTMLElement) || isFilteredGalleryMount(mount)) {
+      continue;
+    }
+
+    if (mount.querySelector('[data-asset]')) {
+      mount.setAttribute(ORIGINAL_GALLERY_ATTR, 'true');
+      return mount;
     }
   }
 
   return null;
 }
 
-function getGalleryWidth(): number {
-  const wrapper = getImmichGalleryWrapper();
+function resolveImmichGalleryWrapper(): HTMLElement | null {
+  if (cachedImmichGalleryWrapper?.isConnected) {
+    return cachedImmichGalleryWrapper;
+  }
+
+  cachedImmichGalleryWrapper = null;
+  const wrapper = findImmichGalleryWrapper();
+
+  if (wrapper) {
+    cachedImmichGalleryWrapper = wrapper;
+  }
+
+  return wrapper;
+}
+
+function nudgeImmichGalleryViewport(wrapper: HTMLElement): void {
+  const tick = () => {
+    window.dispatchEvent(new Event('resize'));
+    document.scrollingElement?.dispatchEvent(new Event('scroll'));
+    void wrapper.offsetHeight;
+  };
+
+  tick();
+  requestAnimationFrame(tick);
+}
+
+function getGalleryWidth(preferredWrapper?: HTMLElement | null): number {
+  const wrapper = preferredWrapper ?? resolveImmichGalleryWrapper();
 
   if (wrapper && wrapper.clientWidth > 0) {
     return Math.floor(wrapper.clientWidth);
@@ -66,9 +111,8 @@ function sortAssets(assets: FolderAsset[]): FolderAsset[] {
   );
 }
 
-function buildFilteredGallery(assets: FolderAsset[], folderPath: string): HTMLElement {
+function buildFilteredGallery(assets: FolderAsset[], folderPath: string, containerWidth: number): HTMLElement {
   const sortedAssets = sortAssets(assets);
-  const containerWidth = getGalleryWidth();
   const aspectRatios = sortedAssets.map((asset) => asset.width / asset.height);
   const layout = createJustifiedLayout(aspectRatios, {
     targetRowHeight: getRowHeight(),
@@ -80,7 +124,7 @@ function buildFilteredGallery(assets: FolderAsset[], folderPath: string): HTMLEl
 
   const root = document.createElement('div');
   root.className = 'mt-2';
-  root.dataset.immichExtension = 'filtered-gallery';
+  root.dataset.immichPeoplePlus = 'filtered-gallery';
 
   const mount = document.createElement('div');
   mount.style.position = 'relative';
@@ -131,23 +175,29 @@ function removeFilteredGallery(): void {
   document.querySelector(FILTERED_GALLERY_SELECTOR)?.remove();
 }
 
-function setImmichGalleryHidden(hidden: boolean): void {
-  const wrapper = getImmichGalleryWrapper();
+function hideImmichGallery(wrapper: HTMLElement): void {
+  cachedImmichGalleryWrapper = wrapper;
+  wrapper.hidden = true;
+  wrapper.setAttribute(HIDDEN_GALLERY_ATTR, 'true');
+}
 
-  if (!wrapper) {
-    return;
-  }
-
-  wrapper.hidden = hidden;
-  wrapper.toggleAttribute(HIDDEN_GALLERY_ATTR, hidden);
+function showImmichGallery(wrapper: HTMLElement): void {
+  wrapper.hidden = false;
+  wrapper.removeAttribute(HIDDEN_GALLERY_ATTR);
+  nudgeImmichGalleryViewport(wrapper);
 }
 
 export function showFilteredGallery(assets: FolderAsset[], folderPath: string): void {
   removeFilteredGallery();
-  setImmichGalleryHidden(true);
 
-  const gallery = buildFilteredGallery(assets, folderPath);
-  const wrapper = getImmichGalleryWrapper();
+  const wrapper = resolveImmichGalleryWrapper();
+  const containerWidth = getGalleryWidth(wrapper);
+
+  if (wrapper) {
+    hideImmichGallery(wrapper);
+  }
+
+  const gallery = buildFilteredGallery(assets, folderPath, containerWidth);
 
   if (wrapper) {
     wrapper.insertAdjacentElement('afterend', gallery);
@@ -159,7 +209,25 @@ export function showFilteredGallery(assets: FolderAsset[], folderPath: string): 
 
 export function clearFilteredGallery(): void {
   removeFilteredGallery();
-  setImmichGalleryHidden(false);
+
+  const wrapper = cachedImmichGalleryWrapper;
+
+  if (wrapper?.isConnected) {
+    showImmichGallery(wrapper);
+    return;
+  }
+
+  const found = findImmichGalleryWrapper();
+
+  if (found) {
+    cachedImmichGalleryWrapper = found;
+    showImmichGallery(found);
+  }
+}
+
+export function resetFilteredGalleryState(): void {
+  removeFilteredGallery();
+  cachedImmichGalleryWrapper = null;
 }
 
 export function waitForGalleryAssets(timeoutMs = 15_000): Promise<boolean> {

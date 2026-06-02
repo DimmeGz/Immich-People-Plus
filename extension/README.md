@@ -22,11 +22,32 @@ When you open a folder with direct photo files (not subfolders), a **People** ba
 
 - **Person chips** — avatar, name, and photo count in this folder
 - **Other photos** — photos without assigned people
+- **Tag chips** — optional, if person-api is configured
 - **Show all** — resets the filter
 
 Active filters render a custom justified gallery for matching photos. The filter bar and gallery state are preserved when you open and close a photo in the folder viewer.
 
 The bar is shown only when the URL has a `path` query parameter and the folder has at least one recognized person or one “other” photo.
+
+### Person card (`/people/{id}`) — optional
+
+If Person API is configured, each person page shows a **Person card** panel with:
+
+- birth year / month / day
+- notes
+- multiple social links (label + URL)
+- tag assignment
+
+If Person API is not configured or unavailable, the extension keeps working without this panel.
+
+## Person API settings
+
+Open `chrome://extensions` → Immich People Plus → **Details** → **Extension options** and set:
+
+- Person API base URL (e.g. `http://localhost:3001`)
+- API key (`X-API-Key`)
+
+This integration is optional. Existing features work without it.
 
 ## Install (development)
 
