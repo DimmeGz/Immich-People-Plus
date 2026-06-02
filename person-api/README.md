@@ -20,9 +20,11 @@ npm start
 
 ## Run with Docker
 
+The image uses a multi-stage build so `better-sqlite3` can compile on Alpine (Python + build tools in the builder stage only).
+
 ```bash
 cp .env.example .env
-docker compose up --build
+docker compose up -d --build
 ```
 
 ## Endpoints
