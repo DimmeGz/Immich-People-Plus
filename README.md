@@ -1,70 +1,35 @@
 # Immich Extension
 
-Chrome extension that adds optional features to a self-hosted [Immich](https://immich.app/) instance.
+Tools for a self-hosted [Immich](https://immich.app/) instance: a Chrome extension and (planned) a person metadata API.
 
-## Features
+## Repository layout
 
-### People page sorting (`/people`)
+```
+extension/     Chrome extension (content scripts)
+person-api/    Person cards, tags, and metadata API (planned)
+```
 
-Adds a **Sort** dropdown to the people list header:
+## Chrome extension
 
-- **Default** — Immich's built-in order (unchanged)
-- **Name A→Z** — sort visible people by name
-- **Name Z→A** — reverse name sort
+Adds optional UI on top of Immich: people sorting and folder filtering by person.
 
-Unnamed people are placed at the end. Your choice is saved in extension storage and restored on the next visit.
+See [extension/README.md](extension/README.md) for features, install, and development.
 
-When switching back to **Default**, the page reloads to restore Immich's original order and infinite scroll behavior.
-
-### Folder people filter (`/folders?path=...`)
-
-When you open a folder that contains photos (direct files only, not subfolders), a **People** bar appears above the gallery:
-
-- **Person chips** — avatar, name, and photo count in this folder; click to show only their photos
-- **Other photos** — photos without assigned people (landscapes, unassigned faces, etc.)
-- **Show all** — appears when a filter is active; resets the gallery
-
-Filtering hides non-matching thumbnails in the gallery. Because Immich uses a fixed justified layout, empty gaps may remain where hidden photos were.
-
-The filter bar is shown only when:
-
-- the URL contains a `path` query parameter, and
-- the folder has photos, and
-- there is at least one recognized person or at least one “other” photo
-
-## Install (development)
-
-1. Build the extension:
+Quick start:
 
 ```bash
+cd extension
 npm install
 npm run build
 ```
 
-2. Open Chrome → `chrome://extensions`
-3. Enable **Developer mode**
-4. Click **Load unpacked**
-5. Select the `dist/` folder
+Load **`extension/dist/`** as an unpacked extension in Chrome (`chrome://extensions`).
 
-## Development
+## Person API
 
-```bash
-npm run watch
-```
-
-After changes, click **Reload** on the extension card in `chrome://extensions`, then refresh the Immich tab.
-
-**Note:** After reloading the extension, refresh any open Immich tabs to avoid “Extension context invalidated” errors.
+The `person-api/` service will store extended person data (birth year, notes, social links, tags) keyed by Immich person IDs. Not implemented yet.
 
 ## Requirements
 
-- A running Immich instance (any self-hosted URL)
-- You must be logged in — the extension uses your existing Immich session cookies
-
-## Project layout
-
-```
-src/content/     Content scripts (people sort, folder filter)
-dist/            Load this folder in Chrome
-manifest.json    Extension manifest (copied to dist on build)
-```
+- A running self-hosted Immich instance
+- You must be logged in to Immich in the browser — the extension uses your existing session cookies
