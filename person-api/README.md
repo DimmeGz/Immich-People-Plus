@@ -20,7 +20,7 @@ npm start
 
 ## Run with Docker
 
-The image uses a multi-stage build so `better-sqlite3` can compile on Alpine (Python + build tools in the builder stage only).
+The image uses Debian slim so `better-sqlite3` can install from prebuilt binaries (no `apk`/`apt` build tools during a normal build). If `npm ci` fails with `node-gyp`, add to the builder stage: `apt-get update && apt-get install -y python3 make g++`.
 
 ```bash
 cp .env.example .env

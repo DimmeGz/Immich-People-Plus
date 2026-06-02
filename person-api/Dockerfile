@@ -1,8 +1,7 @@
-FROM node:22-alpine AS builder
+# Debian slim: better-sqlite3 usually installs from prebuild (no apk/apt build tools).
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
-
-RUN apk add --no-cache python3 make g++
 
 COPY package*.json ./
 RUN npm ci --omit=dev
@@ -10,7 +9,7 @@ RUN npm ci --omit=dev
 COPY src ./src
 COPY migrations ./migrations
 
-FROM node:22-alpine
+FROM node:22-bookworm-slim
 
 WORKDIR /app
 
