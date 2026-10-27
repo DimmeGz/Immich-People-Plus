@@ -1,50 +1,6 @@
 import { Hono } from 'hono';
-import { db } from '../db/connection.js';
-import type { PersonCard, Tag } from '../types.js';
-import { dedupeSocial, nowIso, parseSocial, toNumberOrNull } from '../utils.js';
-
-type PersonRow = {
-  id: string;
-  birth_year: number | null;
-  birth_month: number | null;
-  birth_day: number | null;
-  notes: string | null;
-  social: string;
-  created_at: string;
-  updated_at: string;
-};
-
-function getPersonTags(personId: string): Tag[] {
-  return db
-    .prepare(
-      `
-        SELECT t.id, t.name, t.color
-        FROM tag t
-        INNER JOIN person_tag pt ON pt.tag_id = t.id
-        WHERE pt.person_id = ?
-        ORDER BY t.name COLLATE NOCASE ASC
-      `,
-    )
-    .all(personId) as Tag[];
-}
-
-function mapPerson(row: PersonRow): PersonCard {
-  return {
-    id: row.id,
-    birthYear: row.birth_year,
-    birthMonth: row.birth_month,
-    birthDay: row.birth_day,
-    notes: row.notes,
-    social: parseSocial(JSON.parse(row.social ?? '[]')),
-    tags: getPersonTags(row.id),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-function getPersonById(id: string): PersonRow | undefined {
-  return db.prepare('SELECT * FROM person WHERE id = ?').get(id) as PersonRow | undefined;
-}
+import { getRepository } from '../db/index.js';
+import { parseSocial, toNumberOrNull } from '../utils.js';
 
 function validateDateParts(birthYear: number | null, birthMonth: number | null, birthDay: number | null): string | null {
   if (birthYear !== null && (birthYear < 1800 || birthYear > 3000)) {
@@ -64,7 +20,7 @@ function validateDateParts(birthYear: number | null, birthMonth: number | null, 
 
 export const personsRouter = new Hono();
 
-personsRouter.get('/bulk/list', (c) => {
+personsRouter.get('/bulk/list', async (c) => {
   const idsParam = c.req.query('ids');
 
   if (!idsParam) {
@@ -81,12 +37,8 @@ personsRouter.get('/bulk/list', (c) => {
     return c.json({ persons: [] });
   }
 
-  const placeholders = ids.map(() => '?').join(',');
-  const rows = db
-    .prepare(`SELECT * FROM person WHERE id IN (${placeholders})`)
-    .all(...ids) as PersonRow[];
-
-  return c.json({ persons: rows.map(mapPerson) });
+  const persons = await getRepository().bulkPersons(ids);
+  return c.json({ persons });
 });
 
 personsRouter.post('/merge', async (c) => {
@@ -100,65 +52,25 @@ personsRouter.post('/merge', async (c) => {
     return c.json({ error: 'into and from are required' }, 400);
   }
 
-  if (!getPersonById(into)) {
-    db.prepare('INSERT INTO person (id, social, updated_at) VALUES (?, ?, ?)').run(into, '[]', nowIso());
-  }
-
-  const target = getPersonById(into)!;
-  const sourceRows = from
-    .map((id) => getPersonById(id))
-    .filter((row): row is PersonRow => Boolean(row));
-
-  const mergedSocial = dedupeSocial([
-    ...parseSocial(JSON.parse(target.social ?? '[]')),
-    ...sourceRows.flatMap((row) => parseSocial(JSON.parse(row.social ?? '[]'))),
-  ]);
-
-  const notes = target.notes || sourceRows.find((row) => row.notes)?.notes || null;
-  const birthYear = target.birth_year ?? sourceRows.find((row) => row.birth_year !== null)?.birth_year ?? null;
-  const birthMonth = target.birth_month ?? sourceRows.find((row) => row.birth_month !== null)?.birth_month ?? null;
-  const birthDay = target.birth_day ?? sourceRows.find((row) => row.birth_day !== null)?.birth_day ?? null;
-
-  const tx = db.transaction(() => {
-    const insertTag = db.prepare('INSERT OR IGNORE INTO person_tag (person_id, tag_id) VALUES (?, ?)');
-    for (const sourceId of from) {
-      const sourceTags = db.prepare('SELECT tag_id FROM person_tag WHERE person_id = ?').all(sourceId) as Array<{ tag_id: string }>;
-      for (const sourceTag of sourceTags) {
-        insertTag.run(into, sourceTag.tag_id);
-      }
-      db.prepare('DELETE FROM person WHERE id = ?').run(sourceId);
-    }
-
-    db.prepare(
-      `
-        UPDATE person
-        SET birth_year = ?, birth_month = ?, birth_day = ?, notes = ?, social = ?, updated_at = ?
-        WHERE id = ?
-      `,
-    ).run(birthYear, birthMonth, birthDay, notes, JSON.stringify(mergedSocial), nowIso(), into);
-  });
-
-  tx();
-  return c.json(mapPerson(getPersonById(into)!));
+  const person = await getRepository().mergePersons(into, from);
+  return c.json(person);
 });
 
-personsRouter.get('/by-tag/:tagId', (c) => {
+personsRouter.get('/by-tag/:tagId', async (c) => {
   const { tagId } = c.req.param();
-  const personIds = db
-    .prepare('SELECT person_id FROM person_tag WHERE tag_id = ? ORDER BY person_id ASC')
-    .all(tagId) as Array<{ person_id: string }>;
-  return c.json({ personIds: personIds.map((entry) => entry.person_id) });
+  const personIds = await getRepository().personsByTag(tagId);
+  return c.json({ personIds });
 });
 
-personsRouter.get('/:id', (c) => {
+personsRouter.get('/:id', async (c) => {
   const { id } = c.req.param();
-  const person = getPersonById(id);
+  const person = await getRepository().getPerson(id);
 
   if (!person) {
     return c.json({ error: 'Person metadata not found' }, 404);
   }
 
-  return c.json(mapPerson(person));
+  return c.json(person);
 });
 
 personsRouter.put('/:id', async (c) => {
@@ -182,28 +94,8 @@ personsRouter.put('/:id', async (c) => {
     return c.json({ error: validationError }, 400);
   }
 
-  const updatedAt = nowIso();
-  const existing = getPersonById(id);
-
-  if (!existing) {
-    db.prepare(
-      `
-        INSERT INTO person (
-          id, birth_year, birth_month, birth_day, notes, social, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `,
-    ).run(id, birthYear, birthMonth, birthDay, notes, JSON.stringify(social), updatedAt);
-  } else {
-    db.prepare(
-      `
-        UPDATE person
-        SET birth_year = ?, birth_month = ?, birth_day = ?, notes = ?, social = ?, updated_at = ?
-        WHERE id = ?
-      `,
-    ).run(birthYear, birthMonth, birthDay, notes, JSON.stringify(social), updatedAt, id);
-  }
-
-  return c.json(mapPerson(getPersonById(id)!));
+  const person = await getRepository().upsertPerson(id, { birthYear, birthMonth, birthDay, notes, social });
+  return c.json(person);
 });
 
 personsRouter.put('/:id/tags', async (c) => {
@@ -220,26 +112,12 @@ personsRouter.put('/:id/tags', async (c) => {
     return c.json({ error: 'tagIds array is required' }, 400);
   }
 
-  if (!getPersonById(id)) {
-    db.prepare('INSERT INTO person (id, social, updated_at) VALUES (?, ?, ?)').run(id, '[]', nowIso());
-  }
-
-  const tx = db.transaction(() => {
-    db.prepare('DELETE FROM person_tag WHERE person_id = ?').run(id);
-    const insert = db.prepare('INSERT OR IGNORE INTO person_tag (person_id, tag_id) VALUES (?, ?)');
-    for (const tagId of tagIds) {
-      insert.run(id, tagId);
-    }
-    db.prepare('UPDATE person SET updated_at = ? WHERE id = ?').run(nowIso(), id);
-  });
-
-  tx();
-  return c.json({ tags: getPersonTags(id) });
+  const tags = await getRepository().setPersonTags(id, tagIds);
+  return c.json({ tags });
 });
 
-personsRouter.delete('/:id', (c) => {
+personsRouter.delete('/:id', async (c) => {
   const { id } = c.req.param();
-  db.prepare('DELETE FROM person WHERE id = ?').run(id);
+  await getRepository().deletePerson(id);
   return c.json({ ok: true });
 });
-

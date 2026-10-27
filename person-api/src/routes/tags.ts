@@ -1,20 +1,10 @@
 import { Hono } from 'hono';
-import { db } from '../db/connection.js';
-import { createId, nowIso } from '../utils.js';
-
-type TagRow = {
-  id: string;
-  name: string;
-  color: string | null;
-};
-
-function readTags(): TagRow[] {
-  return db.prepare('SELECT id, name, color FROM tag ORDER BY name COLLATE NOCASE ASC').all() as TagRow[];
-}
+import { getRepository } from '../db/index.js';
+import { TagNameConflictError } from '../db/repository.js';
 
 export const tagsRouter = new Hono();
 
-tagsRouter.get('/', (c) => c.json({ tags: readTags() }));
+tagsRouter.get('/', async (c) => c.json({ tags: await getRepository().listTags() }));
 
 tagsRouter.post('/', async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -25,24 +15,22 @@ tagsRouter.post('/', async (c) => {
     return c.json({ error: 'Tag name is required' }, 400);
   }
 
-  const id = createId();
-  const updatedAt = nowIso();
-
   try {
-    db.prepare('INSERT INTO tag (id, name, color, updated_at) VALUES (?, ?, ?, ?)')
-      .run(id, name, color, updatedAt);
-  } catch {
-    return c.json({ error: 'Tag name must be unique' }, 409);
+    const tag = await getRepository().createTag({ name, color });
+    return c.json(tag, 201);
+  } catch (error) {
+    if (error instanceof TagNameConflictError) {
+      return c.json({ error: 'Tag name must be unique' }, 409);
+    }
+    throw error;
   }
-
-  return c.json({ id, name, color }, 201);
 });
 
-tagsRouter.delete('/:id', (c) => {
+tagsRouter.delete('/:id', async (c) => {
   const { id } = c.req.param();
-  const result = db.prepare('DELETE FROM tag WHERE id = ?').run(id);
+  const deleted = await getRepository().deleteTag(id);
 
-  if (result.changes === 0) {
+  if (!deleted) {
     return c.json({ error: 'Tag not found' }, 404);
   }
 

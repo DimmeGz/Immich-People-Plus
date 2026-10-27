@@ -9,3 +9,13 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+    networks:
+      - default
+      - immich
+
+networks:
+  immich:
+    # Docker network of the Immich compose project, so DATABASE_URL can point at
+    # immich_postgres by container name: `docker network ls | grep immich`
+    external: true
+    name: ${IMMICH_NETWORK:-immich_default}
