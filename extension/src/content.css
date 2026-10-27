@@ -250,7 +250,9 @@
 .immich-ext-person-card__trigger,
 .immich-ext-person-card__input,
 .immich-ext-person-card__textarea,
-.immich-ext-person-card__chip {
+.immich-ext-person-card__chip,
+.immich-ext-person-tools,
+.immich-ext-age-bar {
   --ipp-bg: #ffffff;
   --ipp-bg-muted: #f4f4f5;
   --ipp-border: #e4e4e7;
@@ -266,11 +268,15 @@
 .dark .immich-ext-person-card__input,
 .dark .immich-ext-person-card__textarea,
 .dark .immich-ext-person-card__chip,
+.dark .immich-ext-person-tools,
+.dark .immich-ext-age-bar,
 :global(.dark) .immich-ext-person-card-modal,
 :global(.dark) .immich-ext-person-card__trigger,
 :global(.dark) .immich-ext-person-card__input,
 :global(.dark) .immich-ext-person-card__textarea,
-:global(.dark) .immich-ext-person-card__chip {
+:global(.dark) .immich-ext-person-card__chip,
+:global(.dark) .immich-ext-person-tools,
+:global(.dark) .immich-ext-age-bar {
   --ipp-bg: #27272a;
   --ipp-bg-muted: #18181b;
   --ipp-border: #3f3f46;
@@ -286,7 +292,9 @@
   :root:not(.light) .immich-ext-person-card__trigger,
   :root:not(.light) .immich-ext-person-card__input,
   :root:not(.light) .immich-ext-person-card__textarea,
-  :root:not(.light) .immich-ext-person-card__chip {
+  :root:not(.light) .immich-ext-person-card__chip,
+  :root:not(.light) .immich-ext-person-tools,
+  :root:not(.light) .immich-ext-age-bar {
     --ipp-bg: #27272a;
     --ipp-bg-muted: #18181b;
     --ipp-border: #3f3f46;
@@ -298,14 +306,24 @@
   }
 }
 
-/* Trigger in person header row */
+/* Tools in the person header row (Person card, age filter, Immeyes links) */
 section.immich-ext-person-card-row {
   display: flex !important;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.5rem 0.75rem;
   width: 100%;
-  max-width: 36rem;
+  max-width: 64rem;
+}
+
+.immich-ext-person-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  flex-shrink: 0;
+  margin-inline-start: auto;
 }
 
 section.immich-ext-person-card-row > button:first-of-type {
@@ -452,4 +470,93 @@ section.immich-ext-person-card-row > button:first-of-type {
 .immich-ext-person-card__status {
   font-size: 0.75rem;
   color: var(--ipp-text-muted);
+}
+
+/* Age filter bar on /photos (above the memories, inside Immich's timeline top section) */
+.immich-ext-age-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0 1rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--ipp-border);
+  background: var(--ipp-bg-muted);
+  color: var(--ipp-text);
+  font-size: 0.875rem;
+  /* Immich keeps the timeline invisible until its first months load; the bar must show progress meanwhile. */
+  visibility: visible;
+}
+
+.immich-ext-age-filter--busy {
+  opacity: 0.75;
+}
+
+.immich-ext-age-filter__title {
+  font-weight: 600;
+}
+
+.immich-ext-age-filter__label {
+  color: var(--ipp-text-muted);
+  white-space: nowrap;
+}
+
+.immich-ext-age-filter__input {
+  width: 4rem;
+  height: 2rem;
+  box-sizing: border-box;
+  border-radius: 0.5rem;
+  border: 1px solid var(--ipp-border);
+  background: var(--ipp-bg);
+  color: var(--ipp-text);
+  padding: 0 0.5rem;
+  font: inherit;
+}
+
+.immich-ext-age-filter__button {
+  height: 2rem;
+  border-radius: 9999px;
+  border: 1px solid var(--ipp-border);
+  background: var(--ipp-bg);
+  color: var(--ipp-text);
+  padding: 0 0.85rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.immich-ext-age-filter__button:hover {
+  border-color: var(--ipp-primary);
+}
+
+.immich-ext-age-filter__button--primary {
+  border-color: var(--ipp-primary);
+  background: var(--ipp-primary-bg);
+}
+
+.immich-ext-age-filter__button:disabled,
+.immich-ext-age-filter__input:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.immich-ext-age-filter__status {
+  color: var(--ipp-text-muted);
+  font-size: 0.8125rem;
+}
+
+.immich-ext-age-filter__status--error {
+  color: #dc2626;
+}
+
+/* Immeyes links on the person page */
+.immich-ext-immeyes-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.immich-ext-immeyes-links__link {
+  display: inline-block;
 }

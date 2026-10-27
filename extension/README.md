@@ -46,14 +46,38 @@ If Person API is configured, the modal includes:
 
 If Person API is not configured or unavailable, the extension keeps working without this panel.
 
-## Person API settings
+### Age filter (`/photos`)
+
+Above the memories on the main timeline (`/photos`) a bar **Вік від … до …** filters the timeline to photos where **at least one person had that age** when the photo was taken. Immich keeps drawing its own timeline, so day/month groups, the year scrubber, the photo viewer (next/previous stay inside the filtered set) and selection all work as usual.
+
+- **Who counts** — visible (not hidden) people with a known birth date: Immich’s `birthDate` first (person menu → *Set date of birth*), the Person API card (`birth_year` / `birth_month` / `birth_day`) for the rest. People without any birth date are skipped. A year-only date counts from 1 January, year + month from the 1st (the status then says how many people are «±1 рік»).
+- **Bounds** — whole years 0–150, either side may stay empty. For each person: from `birthday + from years` up to the last day before `birthday + (to + 1) years`, so «до 5» includes the whole last day at age 5.
+- **Apply** — **Застосувати** or Enter. The page reloads (Immich caches loaded months; a reload is the only reliable way to make it fetch them again). While the extension searches, the timeline waits and the bar shows «Фільтрую: N з M людей…»; then **Фото: N · людей з датою народження: M з K**. **Скинути** reloads to the plain timeline.
+- **Lifetime** — the filter lives in this tab while you stay on `/photos` (opening and closing photos, F5). Leaving `/photos` switches it off; a new visit starts with the plain timeline. Nothing is saved across visits.
+- **How** — one standard search per person (`POST /api/search/metadata` with `personIds`, `takenAfter`, `takenBefore`, paged, 4 in parallel), union of the results. A page-world script (`src/page/timeline-age-filter.ts`, injected at `document_start`) answers Immich’s own `GET /api/timeline/buckets` and `GET /api/timeline/bucket` with only those assets. It does nothing on other pages or without an active filter.
+- **Safety net** — if Immich answers the timeline in a format the extension does not recognise, or the search fails, the timeline is shown unfiltered and the bar says so. Checked against Immich v3.0.2.
+- **Limits** — partners’ photos drop out while filtering (people belong to their owner). For stacks Immich shows only the primary photo: a stack whose primary photo has nobody of the right age is not shown. The memories carousel and photos uploaded while the page is open are not filtered. After changing a birth date, apply the filter again.
+
+### Immeyes links (`/people/{id}`) — optional
+
+When **Immeyes URL** is set in the options, the same row gets links that open in a new tab:
+
+- **Схожі персони** → `<immeyes>/duplicates/person/<uuid>`
+- **Порівняти** → `<immeyes>/duplicates/compare/<uuid>`
+
+The list lives in `src/content/immeyes-links.ts`; adding a page (e.g. **Мапа** → `/map?person=<uuid>` once Immeyes has it) is one entry there. Without an Immeyes URL nothing is shown, and the links do not need the Person API.
+
+## Settings
 
 Open `chrome://extensions` → Immich People Plus → **Details** → **Extension options** and set:
 
 - Person API base URL (e.g. `http://localhost:3001`)
 - API key (`X-API-Key`)
+- Immeyes URL (optional, e.g. `http://immich-host:2284`)
 
-This integration is optional. Existing features work without it.
+Every integration is optional: the people sort, folder filter and the `/photos` age filter (with birth dates set in Immich) work with no settings at all; Person API adds the person card, tags and the birth-date fallback; the Immeyes URL only adds links.
+
+Chrome 111 or newer is required (the age filter’s page script uses `"world": "MAIN"`).
 
 ## Install (development)
 
@@ -81,12 +105,65 @@ After changes, click **Reload** on the extension card in `chrome://extensions`, 
 
 **Note:** After reloading the extension, refresh any open Immich tabs to avoid “Extension context invalidated” errors.
 
+Typecheck without building:
+
+```bash
+cd extension
+npx tsc --noEmit
+```
+
+## Manual test checklist
+
+The extension has no automated tests in the repository; after a change, run through this in Chrome with the rebuilt `dist/` loaded (**Reload** on `chrome://extensions`) and the Immich tab refreshed.
+
+**People page (`/people`)**
+
+1. Tag and Sort dropdowns appear in the header; Name A→Z / Z→A reorders, Default + All tags reloads to Immich’s grid.
+
+**Folder (`/folders?path=...`)**
+
+2. The People bar appears; a person chip shows only their photos in the custom gallery, **Show all** restores Immich’s gallery.
+3. Open a photo from the custom gallery and close it: the filter is still active.
+
+**Age filter (`/photos`)**
+
+4. Open `/photos`: the **Вік від … до …** bar is above the memories, the timeline is the usual one.
+5. Make sure a few people have a birth date in Immich (person menu → *Set date of birth*). Enter «від 2 до 5», press **Застосувати**: the page reloads, the bar shows «Фільтрую…», then **Фото: N · людей з датою народження: M з K**. The timeline shows only matching photos, still grouped by days with the year scrubber on the right.
+6. Spot-check: for a photo near the edges, open it and compare its date with the person’s birthday (photo on the 6th birthday must be absent for «до 5»).
+7. Open a photo and use next/previous: only filtered photos. Close the viewer: the filter is still active. F5: still active.
+8. «до 3» with «від» empty, then «від 10» with «до» empty: each side works alone. «від 7 до 3» or «abc» shows the error text and nothing reloads.
+9. **Скинути**: the page reloads with the full timeline.
+10. Apply a filter, go to `/people` and back to `/photos` via the sidebar: full timeline, empty inputs. Open `/photos` in a new tab: full timeline.
+11. With Person API configured: a person with only a birth year there (nothing in Immich) is counted; the status mentions «±1 рік». Without Person API the filter still works with Immich birth dates.
+
+**Person page (`/people/<uuid>`)**
+
+12. With Person API configured: **Person card** opens the modal, save works. Without it: no **Person card**.
+13. Options → set **Immeyes URL** → save → reload the person page: **Схожі персони** and **Порівняти** open `<immeyes>/duplicates/person/<uuid>` and `<immeyes>/duplicates/compare/<uuid>` in a new tab. Clear the field: the links are gone.
+
+**General**
+
+14. Clear all options: people sort, folder filter and the age filter (Immich birth dates) still work; no console errors from the extension.
+
 ## Project layout
 
 ```
 extension/
-  src/content/     Content scripts (people sort, folder filter)
-  src/content.css  Injected styles
-  dist/            Load this folder in Chrome
-  manifest.json    Copied to dist on build
+  src/content/             Content scripts (isolated world)
+    index.ts               Route watcher (people list, person page, folders, /photos)
+    people-sort.ts         /people: sort + tag filter
+    folder-*.ts            /folders: people bar + filtered gallery
+    photos-age-filter.ts   /photos: age bar, per-person searches, talks to the page script
+    age-filter-control.ts  The «Вік від … до …» inputs
+    birth-date.ts          Birth dates (Immich, then Person API) and the date window per person
+    person-page.ts         /people/<id>: tools row (person card, Immeyes links)
+    immeyes-links.ts       Link list for the Immeyes service
+    person-card.ts         Person card modal (Person API)
+    storage.ts             Extension storage (settings, saved filters)
+  src/page/                Page-world script (document_start): filters Immich's timeline API
+  src/shared/              Code shared by both worlds (message protocol, timeline filtering)
+  src/content.css          Injected styles
+  src/options.*            Settings page
+  dist/                    Load this folder in Chrome
+  manifest.json            Copied to dist on build
 ```

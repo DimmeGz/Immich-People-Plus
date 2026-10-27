@@ -3,6 +3,7 @@ import { loadPersonApiSettings, savePersonApiSettings } from './content/storage'
 
 const baseUrlInput = document.getElementById('baseUrl') as HTMLInputElement | null;
 const apiKeyInput = document.getElementById('apiKey') as HTMLInputElement | null;
+const immeyesUrlInput = document.getElementById('immeyesUrl') as HTMLInputElement | null;
 const saveButton = document.getElementById('saveBtn') as HTMLButtonElement | null;
 const testButton = document.getElementById('testBtn') as HTMLButtonElement | null;
 const status = document.getElementById('status') as HTMLDivElement | null;
@@ -14,18 +15,20 @@ function setStatus(message: string): void {
 }
 
 async function init(): Promise<void> {
-  if (!baseUrlInput || !apiKeyInput || !saveButton || !testButton) {
+  if (!baseUrlInput || !apiKeyInput || !immeyesUrlInput || !saveButton || !testButton) {
     return;
   }
 
   const settings = await loadPersonApiSettings();
   baseUrlInput.value = settings?.baseUrl ?? '';
   apiKeyInput.value = settings?.apiKey ?? '';
+  immeyesUrlInput.value = settings?.immeyesUrl ?? '';
 
   saveButton.addEventListener('click', async () => {
     await savePersonApiSettings({
       baseUrl: baseUrlInput.value.trim().replace(/\/$/, ''),
       apiKey: apiKeyInput.value.trim(),
+      immeyesUrl: immeyesUrlInput.value.trim().replace(/\/+$/, ''),
     });
 
     setStatus('Saved');

@@ -24,3 +24,61 @@ export async function fetchAllVisiblePeople(): Promise<Person[]> {
 
   return people.filter((person) => !person.isHidden);
 }
+
+export type TakenDateRange = {
+  /** ISO datetime, inclusive. */
+  takenAfter?: string;
+  /** ISO datetime, inclusive (Immich compares `fileCreatedAt <= takenBefore`). */
+  takenBefore?: string;
+};
+
+export type AssetDates = {
+  id: string;
+  /** Immich groups the timeline by this (local wall-clock time stored as UTC). */
+  localDateTime: string;
+  /** Upload time; used when the timeline is ordered by "date added". */
+  createdAt: string;
+};
+
+type AssetSearchResponse = {
+  assets: {
+    items: Array<{ id: string; localDateTime?: string; createdAt?: string; fileCreatedAt?: string }>;
+    nextPage: string | null;
+  };
+};
+
+/**
+ * Ids and dates of every photo of one person taken inside the range, via the regular
+ * `POST /api/search/metadata` (same endpoint and paging as the folder filter).
+ */
+export async function searchPersonAssetDates(personId: string, range: TakenDateRange): Promise<AssetDates[]> {
+  const assets: AssetDates[] = [];
+  let page = 1;
+
+  while (page > 0) {
+    const response = await fetch('/api/search/metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ personIds: [personId], ...range, size: 1000, page }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to search person assets (${response.status})`);
+    }
+
+    const data = (await response.json()) as AssetSearchResponse;
+
+    for (const asset of data.assets.items) {
+      const localDateTime = asset.localDateTime ?? asset.fileCreatedAt;
+
+      if (localDateTime) {
+        assets.push({ id: asset.id, localDateTime, createdAt: asset.createdAt ?? localDateTime });
+      }
+    }
+
+    const nextPage = data.assets.nextPage ? Number(data.assets.nextPage) : 0;
+    page = Number.isFinite(nextPage) && nextPage > page ? nextPage : 0;
+  }
+
+  return assets;
+}

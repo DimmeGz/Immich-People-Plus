@@ -128,7 +128,6 @@ function buildFilteredGallery(assets: FolderAsset[], folderPath: string, contain
 
   const mount = document.createElement('div');
   mount.style.position = 'relative';
-  mount.style.width = `${layout.containerWidth}px`;
   mount.style.height = `${layout.containerHeight}px`;
 
   for (let index = 0; index < sortedAssets.length; index += 1) {

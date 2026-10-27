@@ -11,7 +11,7 @@ person-api/    Person cards, tags, and metadata API (SQLite)
 
 ## Chrome extension
 
-Adds optional UI on top of Immich: people sorting and folder filtering by person.
+Adds optional UI on top of Immich: people sorting, folder filtering by person, an age filter for the main timeline and links to Immeyes.
 
 See [extension/README.md](extension/README.md) for features, install, and development.
 
@@ -44,9 +44,13 @@ npm start
 - Open extension options and set Person API URL + API key
 - On `/people`, use Tag and Sort dropdowns (tag filter needs Person API)
 - On `/people/{id}`, edit person card fields and save
+- On `/photos`, filter the timeline with **Вік від … до …** (needs birth dates), open a photo, reset; leave `/photos` and come back to the plain timeline
+- Set **Immeyes URL** in the options and check the **Схожі персони** / **Порівняти** links on `/people/{id}`
 - On `/folders?path=...`, use person and tag filters; try **Tag other photos** on a folder with unrecognized faces
 - Open and close a photo viewer and confirm active filter persists
-- Clear API settings and verify extension still works without person-api
+- Clear API settings and verify extension still works without person-api (the age filter still works with Immich birth dates)
+
+The full step-by-step list is in [extension/README.md](extension/README.md#manual-test-checklist).
 
 ## Requirements
 

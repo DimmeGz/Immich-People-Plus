@@ -2,7 +2,8 @@
   "manifest_version": 3,
   "name": "Immich People Plus",
   "version": "0.3.0",
-  "description": "People sorting, folder filters, and person cards for self-hosted Immich",
+  "minimum_chrome_version": "111",
+  "description": "People sorting, folder filters, person cards and an age filter for self-hosted Immich",
   "permissions": ["storage"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "options_page": "options.html",
@@ -12,6 +13,12 @@
       "js": ["content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["page.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ]
 }

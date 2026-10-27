@@ -1,9 +1,11 @@
+import { PHOTOS_AGE_FILTER_KEY } from '../shared/age-filter';
 import { normalizeFolderPath } from './folder-utils';
 import {
   FOLDER_FILTER_STORAGE_PREFIX,
   PEOPLE_TAG_FILTER_KEY,
   PERSON_API_SETTINGS_KEY,
   STORAGE_KEY,
+  type AgeFilter,
   type FolderFilter,
   type PeopleSortMode,
 } from './types';
@@ -11,7 +13,13 @@ import {
 export type PersonApiSettings = {
   baseUrl: string;
   apiKey: string;
+  /** Immeyes base URL without a trailing slash; empty string when not configured. */
+  immeyesUrl: string;
 };
+
+function normalizeBaseUrl(value: string): string {
+  return value.trim().replace(/\/+$/, '');
+}
 
 function getFolderFilterStorageKey(folderPath: string): string {
   return `${FOLDER_FILTER_STORAGE_PREFIX}${normalizeFolderPath(folderPath)}`;
@@ -185,8 +193,10 @@ function parsePersonApiSettings(value: unknown): PersonApiSettings | null {
   }
 
   return {
-    baseUrl: settings.baseUrl.trim(),
+    baseUrl: normalizeBaseUrl(settings.baseUrl),
     apiKey: settings.apiKey.trim(),
+    // Older saved settings have no immeyesUrl at all.
+    immeyesUrl: typeof settings.immeyesUrl === 'string' ? normalizeBaseUrl(settings.immeyesUrl) : '',
   };
 }
 
@@ -225,8 +235,9 @@ export async function loadPersonApiSettings(): Promise<PersonApiSettings | null>
 
 export async function savePersonApiSettings(settings: PersonApiSettings): Promise<void> {
   const normalized: PersonApiSettings = {
-    baseUrl: settings.baseUrl.trim().replace(/\/$/, ''),
+    baseUrl: normalizeBaseUrl(settings.baseUrl),
     apiKey: settings.apiKey.trim(),
+    immeyesUrl: normalizeBaseUrl(settings.immeyesUrl),
   };
 
   sessionStorage.setItem(PERSON_API_SETTINGS_KEY, JSON.stringify(normalized));
@@ -236,4 +247,47 @@ export async function savePersonApiSettings(settings: PersonApiSettings): Promis
   }
 
   await chrome.storage.local.set({ [PERSON_API_SETTINGS_KEY]: normalized });
+}
+
+/** Immeyes base URL from the options page, or null when the field is empty. */
+export async function loadImmeyesUrl(): Promise<string | null> {
+  const settings = await loadPersonApiSettings();
+  return settings?.immeyesUrl ? settings.immeyesUrl : null;
+}
+
+function parseAgeBound(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Age filter for `/photos`. Lives only in this tab's sessionStorage: it survives the reload that
+ * applies it and opening photos in the viewer; leaving `/photos` clears it, so a new visit starts
+ * with the plain timeline. The page script (src/page) reads the same key at document_start.
+ */
+export function loadPhotosAgeFilter(): AgeFilter | null {
+  try {
+    const raw = sessionStorage.getItem(PHOTOS_AGE_FILTER_KEY);
+
+    if (!raw) {
+      return null;
+    }
+
+    const value = JSON.parse(raw) as Partial<AgeFilter> | null;
+    const filter: AgeFilter = { from: parseAgeBound(value?.from), to: parseAgeBound(value?.to) };
+    return filter.from === null && filter.to === null ? null : filter;
+  } catch {
+    return null;
+  }
+}
+
+export function savePhotosAgeFilter(filter: AgeFilter | null): void {
+  try {
+    if (filter) {
+      sessionStorage.setItem(PHOTOS_AGE_FILTER_KEY, JSON.stringify(filter));
+    } else {
+      sessionStorage.removeItem(PHOTOS_AGE_FILTER_KEY);
+    }
+  } catch {
+    // Storage blocked: the filter simply stays off.
+  }
 }

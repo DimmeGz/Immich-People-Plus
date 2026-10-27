@@ -35,6 +35,11 @@
         margin-top: 12px;
         color: #3f3f46;
       }
+      .hint {
+        margin: -8px 0 16px;
+        font-size: 13px;
+        color: #71717a;
+      }
     </style>
   </head>
   <body>
@@ -44,6 +49,12 @@
     <input id="baseUrl" placeholder="http://localhost:3001" />
     <label for="apiKey">Person API Key</label>
     <input id="apiKey" type="password" placeholder="change-me" />
+    <label for="immeyesUrl">Immeyes URL (optional)</label>
+    <input id="immeyesUrl" placeholder="http://immich-host:2284" />
+    <p class="hint">
+      Adds “Схожі персони” and “Порівняти” links on person pages (<code>/people/&lt;id&gt;</code>).
+      Leave empty to hide them. Works without the Person API.
+    </p>
     <div>
       <button id="saveBtn">Save</button>
       <button id="testBtn" type="button">Test connection</button>

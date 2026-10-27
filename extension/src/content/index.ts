@@ -6,7 +6,8 @@ import {
 } from './folder-filter';
 import { getFolderPathFromUrl } from './folder-utils';
 import { createPeopleSortController, isPeopleListPage, type PeopleSortController } from './people-sort';
-import { syncPersonCard } from './person-card';
+import { syncPersonPage } from './person-page';
+import { syncPhotosAgeFilter } from './photos-age-filter';
 import { isExtensionContextValid } from './storage';
 
 let peopleController: PeopleSortController | null = null;
@@ -80,6 +81,9 @@ async function syncFolderFilter(): Promise<void> {
 }
 
 async function syncWithRoute(): Promise<void> {
+  // First and synchronous: on /photos with an active age filter Immich's timeline waits for it.
+  syncPhotosAgeFilter();
+
   if (!isExtensionContextValid()) {
     deactivatePeopleSort();
     deactivateFolderFilter();
@@ -93,7 +97,7 @@ async function syncWithRoute(): Promise<void> {
     deactivatePeopleSort();
   }
 
-  await syncPersonCard();
+  await syncPersonPage();
   await syncFolderFilter();
 }
 

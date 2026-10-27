@@ -1,20 +1,16 @@
 import type { PersonCard, PersonTag, SocialLink } from './types';
 import { PersonApiClient } from './person-api-client';
-import { isExtensionContextValid } from './storage';
 
-type PersonCardController = {
-  dispose: () => void;
-};
-
-const TRIGGER_SELECTOR = '[data-immich-people-plus="person-card-trigger"]';
 const MODAL_SELECTOR = '[data-immich-people-plus="person-card-modal"]';
 
-function getPersonIdFromPath(pathname: string): string | null {
+/** Person id from `/people/<uuid>` and from the viewer route `/people/<uuid>/photos/<assetId>`. */
+export function getPersonIdFromPath(pathname: string): string | null {
   const match = pathname.match(/^\/people\/([^/]+)/);
   return match?.[1] ?? null;
 }
 
-function findPersonInfoBlock(): HTMLElement | null {
+/** Immich's person block (avatar + name) rendered at the top of the person timeline. */
+export function findPersonInfoBlock(): HTMLElement | null {
   const blocks = document.querySelectorAll<HTMLElement>('main div.relative.w-fit');
 
   for (const block of blocks) {
@@ -26,12 +22,12 @@ function findPersonInfoBlock(): HTMLElement | null {
   return null;
 }
 
-function findPersonInfoSection(): HTMLElement | null {
+export function findPersonInfoSection(): HTMLElement | null {
   const block = findPersonInfoBlock();
   return block?.querySelector<HTMLElement>('section.flex') ?? null;
 }
 
-function waitForPersonInfoSection(timeoutMs = 15_000): Promise<HTMLElement | null> {
+export function waitForPersonInfoSection(timeoutMs = 15_000): Promise<HTMLElement | null> {
   return new Promise((resolve) => {
     const existing = findPersonInfoSection();
 
@@ -66,7 +62,7 @@ function waitForPersonInfoSection(timeoutMs = 15_000): Promise<HTMLElement | nul
   });
 }
 
-function closeModal(): void {
+export function closePersonCardModal(): void {
   document.querySelector(MODAL_SELECTOR)?.remove();
 }
 
@@ -119,8 +115,8 @@ function refreshTagOptions(select: HTMLSelectElement, tags: PersonTag[], selecte
   }
 }
 
-async function openPersonCardModal(personId: string): Promise<void> {
-  closeModal();
+export async function openPersonCardModal(personId: string): Promise<void> {
+  closePersonCardModal();
 
   const client = await PersonApiClient.create();
 
@@ -155,7 +151,7 @@ async function openPersonCardModal(personId: string): Promise<void> {
   closeButton.type = 'button';
   closeButton.className = 'immich-ext-person-card__chip';
   closeButton.textContent = 'Close';
-  closeButton.addEventListener('click', closeModal);
+  closeButton.addEventListener('click', closePersonCardModal);
 
   header.append(title, closeButton);
 
@@ -241,12 +237,12 @@ async function openPersonCardModal(personId: string): Promise<void> {
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
-      closeModal();
+      closePersonCardModal();
     }
   };
 
   document.addEventListener('keydown', onKeyDown, { once: true });
-  backdrop.addEventListener('click', closeModal);
+  backdrop.addEventListener('click', closePersonCardModal);
   panel.addEventListener('click', (event) => event.stopPropagation());
 
   const socialRows: HTMLElement[] = [];
@@ -362,10 +358,8 @@ async function openPersonCardModal(personId: string): Promise<void> {
   });
 }
 
-function mountPersonCardTrigger(section: HTMLElement, personId: string): HTMLElement {
-  section.classList.add('immich-ext-person-card-row');
-  section.querySelector(TRIGGER_SELECTOR)?.remove();
-
+/** "Person card" link for the person tools row; opens the person-api modal. */
+export function createPersonCardTrigger(personId: string): HTMLButtonElement {
   const trigger = document.createElement('button');
   trigger.type = 'button';
   trigger.className = 'immich-ext-person-card__trigger';
@@ -378,65 +372,5 @@ function mountPersonCardTrigger(section: HTMLElement, personId: string): HTMLEle
     void openPersonCardModal(personId);
   });
 
-  section.appendChild(trigger);
   return trigger;
-}
-
-async function mountPersonCard(): Promise<PersonCardController | null> {
-  const personId = getPersonIdFromPath(window.location.pathname);
-
-  if (!personId) {
-    return null;
-  }
-
-  const client = await PersonApiClient.create();
-
-  if (!client) {
-    return null;
-  }
-
-  const section = await waitForPersonInfoSection();
-
-  if (!section) {
-    return null;
-  }
-
-  const trigger = mountPersonCardTrigger(section, personId);
-
-  return {
-    dispose: () => {
-      closeModal();
-      trigger.remove();
-      section.classList.remove('immich-ext-person-card-row');
-    },
-  };
-}
-
-let controller: PersonCardController | null = null;
-let activePersonId: string | null = null;
-
-export async function syncPersonCard(): Promise<void> {
-  if (!isExtensionContextValid()) {
-    controller?.dispose();
-    controller = null;
-    activePersonId = null;
-    return;
-  }
-
-  const personId = getPersonIdFromPath(window.location.pathname);
-
-  if (!personId) {
-    controller?.dispose();
-    controller = null;
-    activePersonId = null;
-    return;
-  }
-
-  if (controller && activePersonId === personId) {
-    return;
-  }
-
-  controller?.dispose();
-  controller = await mountPersonCard();
-  activePersonId = controller ? personId : null;
 }

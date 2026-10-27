@@ -6,6 +6,8 @@ export type Person = {
   isHidden: boolean;
   updatedAt?: string;
   isFavorite?: boolean;
+  /** `YYYY-MM-DD` or null; returned by `GET /api/people`. */
+  birthDate?: string | null;
 };
 
 export type SocialLink = {
@@ -54,6 +56,27 @@ export type FolderAsset = {
   height: number;
   thumbhash?: string | null;
   people: Person[];
+};
+
+export type BirthDatePrecision = 'day' | 'month' | 'year';
+
+/**
+ * Birth date resolved for the age filter. When only the year (or year and month) is known,
+ * the missing parts are 1 and `precision` says so, so the UI can warn about ±1 year.
+ */
+export type BirthDate = {
+  year: number;
+  month: number;
+  day: number;
+  precision: BirthDatePrecision;
+  source: 'immich' | 'person-api';
+};
+
+/** Age window in whole years; a null bound means "no limit on that side". */
+export type AgeFilter = {
+  from: number | null;
+  /** Inclusive: "to 5" keeps photos up to the last day the person was 5. */
+  to: number | null;
 };
 
 export type FolderPersonSummary = {
