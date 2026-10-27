@@ -58,6 +58,16 @@ Above the memories on the main timeline (`/photos`) a bar **Вік від … д
 - **Safety net** — if Immich answers the timeline in a format the extension does not recognise, or the search fails, the timeline is shown unfiltered and the bar says so. Checked against Immich v3.0.2.
 - **Limits** — partners’ photos drop out while filtering (people belong to their owner). For stacks Immich shows only the primary photo: a stack whose primary photo has nobody of the right age is not shown. The memories carousel and photos uploaded while the page is open are not filtered. After changing a birth date, apply the filter again.
 
+### Age in the photo info panel — optional (needs Person API)
+
+Immich already shows each person’s age on the photo under their name in the **People** block of the info panel (ⓘ), but only for birth dates stored in Immich. For people whose birth date is only in the Person API card, the extension adds the same line in the same place:
+
+- **Wording** — Immich’s: «Вік 3 місяці», «Вік 1 рік, 2 місяці», «Вік 5» (or «Age …» when Immich is in English; other Immich languages get English). Smaller text when the panel lists more than six people, like Immich. The tooltip shows the birth date and «person-api».
+- **Dates** — the age is counted from the photo’s local date (Immich’s `localDateTime`) the same way Immich counts it. If the card has only the year (or year and month) and the age is not certain, a range is shown: «Вік 4–5», «Вік 0–7 місяців». No line if the photo was taken before the person was born.
+- **Immich first** — people with a birth date in Immich are left to Immich, even if the card has another date.
+- **How** — when the info panel shows people, one `GET /api/assets/<id>` (date of the photo and its people) and one Person API bulk request. Opening the next photo drops the previous ages at once. Without Person API settings nothing is requested and nothing is added.
+- **Limits** — Immich shows the People block only on your own photos (not on partners’ photos or shared links), so there is no age there either. While the mouse is over another photo of a stack, Immich previews that photo’s people; the ages stay computed from the open photo’s date.
+
 ### Immeyes links (`/people/{id}`) — optional
 
 When **Immeyes URL** is set in the options, the same row gets links that open in a new tab:
@@ -75,7 +85,7 @@ Open `chrome://extensions` → Immich People Plus → **Details** → **Extensio
 - API key (`X-API-Key`)
 - Immeyes URL (optional, e.g. `http://immich-host:2284`)
 
-Every integration is optional: the people sort, folder filter and the `/photos` age filter (with birth dates set in Immich) work with no settings at all; Person API adds the person card, tags and the birth-date fallback; the Immeyes URL only adds links.
+Every integration is optional: the people sort, folder filter and the `/photos` age filter (with birth dates set in Immich) work with no settings at all; Person API adds the person card, tags, the birth-date fallback and ages in the photo info panel; the Immeyes URL only adds links.
 
 Chrome 111 or newer is required (the age filter’s page script uses `"world": "MAIN"`).
 
@@ -136,26 +146,33 @@ The extension has no automated tests in the repository; after a change, run thro
 10. Apply a filter, go to `/people` and back to `/photos` via the sidebar: full timeline, empty inputs. Open `/photos` in a new tab: full timeline.
 11. With Person API configured: a person with only a birth year there (nothing in Immich) is counted; the status mentions «±1 рік». Without Person API the filter still works with Immich birth dates.
 
+**Photo info panel (any photo, ⓘ)**
+
+12. With Person API configured, give someone a full birth date in their Person card and leave Immich’s empty; open one of their photos and the info panel: under their name in **People** is «Вік N» (or «Вік N місяців» for a baby), the tooltip shows the date and «person-api». Someone with an Immich birth date shows Immich’s own line only once.
+13. Next/previous to a photo of the same person from another year: the age changes, the old one never stays. A card with only the year shows a range («Вік 4–5») where the age is not certain. A photo from before the birth: no age. Without Person API: nothing added.
+
 **Person page (`/people/<uuid>`)**
 
-12. With Person API configured: **Person card** opens the modal, save works. Without it: no **Person card**.
-13. Options → set **Immeyes URL** → save → reload the person page: **Схожі персони** and **Порівняти** open `<immeyes>/duplicates/person/<uuid>` and `<immeyes>/duplicates/compare/<uuid>` in a new tab. Clear the field: the links are gone.
+14. With Person API configured: **Person card** opens the modal, save works. Without it: no **Person card**.
+15. Options → set **Immeyes URL** → save → reload the person page: **Схожі персони** and **Порівняти** open `<immeyes>/duplicates/person/<uuid>` and `<immeyes>/duplicates/compare/<uuid>` in a new tab. Clear the field: the links are gone.
 
 **General**
 
-14. Clear all options: people sort, folder filter and the age filter (Immich birth dates) still work; no console errors from the extension.
+16. Clear all options: people sort, folder filter and the age filter (Immich birth dates) still work; no console errors from the extension.
 
 ## Project layout
 
 ```
 extension/
   src/content/             Content scripts (isolated world)
-    index.ts               Route watcher (people list, person page, folders, /photos)
+    index.ts               Route watcher (people list, person page, folders, /photos, viewer)
     people-sort.ts         /people: sort + tag filter
     folder-*.ts            /folders: people bar + filtered gallery
     photos-age-filter.ts   /photos: age bar, per-person searches, talks to the page script
     age-filter-control.ts  The «Вік від … до …» inputs
     birth-date.ts          Birth dates (Immich, then Person API) and the date window per person
+    detail-panel-age.ts    Info panel: age under people whose birth date is only in Person API
+    person-age.ts          Age on a photo in Immich's wording (also ranges for year-only dates)
     person-page.ts         /people/<id>: tools row (person card, Immeyes links)
     immeyes-links.ts       Link list for the Immeyes service
     person-card.ts         Person card modal (Person API)

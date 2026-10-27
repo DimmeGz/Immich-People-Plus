@@ -82,3 +82,28 @@ export async function searchPersonAssetDates(personId: string, range: TakenDateR
 
   return assets;
 }
+
+export type AssetPeople = {
+  id: string;
+  /** Local wall-clock time of the photo, stored as UTC; Immich computes ages from it. */
+  localDateTime: string | null;
+  /** People with a recognised face on the photo, hidden ones included, with Immich's `birthDate`. */
+  people: Person[];
+};
+
+/** `GET /api/assets/<id>`: the same request Immich's viewer makes for the info panel. */
+export async function fetchAssetPeople(assetId: string): Promise<AssetPeople> {
+  const response = await fetch(`/api/assets/${encodeURIComponent(assetId)}`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch asset (${response.status})`);
+  }
+
+  const data = (await response.json()) as { id?: string; localDateTime?: string | null; people?: Person[] | null };
+
+  return {
+    id: data.id ?? assetId,
+    localDateTime: data.localDateTime ?? null,
+    people: Array.isArray(data.people) ? data.people : [],
+  };
+}

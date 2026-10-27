@@ -1,3 +1,4 @@
+import { syncDetailPanelAges } from './detail-panel-age';
 import {
   createFolderFilterController,
   isFolderAssetsPage,
@@ -83,6 +84,8 @@ async function syncFolderFilter(): Promise<void> {
 async function syncWithRoute(): Promise<void> {
   // First and synchronous: on /photos with an active age filter Immich's timeline waits for it.
   syncPhotosAgeFilter();
+  // Synchronous too: drops the previous photo's ages as soon as the viewer moves on.
+  syncDetailPanelAges();
 
   if (!isExtensionContextValid()) {
     deactivatePeopleSort();
@@ -114,6 +117,12 @@ function watchRouteChanges(): void {
   };
 
   window.addEventListener('popstate', handleRouteChange);
+  // Immich navigates with history.pushState from the page, which the wrappers below (isolated
+  // world) do not see; the Navigation API reports those navigations right away.
+  (window as unknown as { navigation?: EventTarget }).navigation?.addEventListener(
+    'currententrychange',
+    handleRouteChange,
+  );
 
   const originalPushState = history.pushState.bind(history);
   const originalReplaceState = history.replaceState.bind(history);

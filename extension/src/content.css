@@ -560,3 +560,15 @@ section.immich-ext-person-card-row > button:first-of-type {
 .immich-ext-immeyes-links__link {
   display: inline-block;
 }
+
+/* Age from person-api under a person in Immich's info panel; mirrors Immich's own age line
+   (`font-light`, and `text-xs` when the panel lists more than six people). */
+.immich-ext-person-age {
+  margin: 0;
+  font-weight: 300;
+}
+
+.immich-ext-person-age--compact {
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
