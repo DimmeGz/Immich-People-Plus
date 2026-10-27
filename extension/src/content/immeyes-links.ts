@@ -6,8 +6,7 @@ export type ImmeyesLink = {
 
 /**
  * Links to the Immeyes service shown on the person page when "Immeyes URL" is set in the options.
- * Adding a page is one line here, e.g. the map once Immeyes has it:
- *   { label: 'Мапа', title: 'Фото персони на мапі (Immeyes)', path: (id) => `/map?person=${encodeURIComponent(id)}` },
+ * Adding a page is one entry here.
  */
 export const IMMEYES_LINKS: readonly ImmeyesLink[] = [
   {
@@ -19,6 +18,11 @@ export const IMMEYES_LINKS: readonly ImmeyesLink[] = [
     label: 'Порівняти',
     title: 'Порівняти з іншою персоною в Immeyes',
     path: (id) => `/duplicates/compare/${encodeURIComponent(id)}`,
+  },
+  {
+    label: 'Мапа',
+    title: 'Фото персони на мапі (Immeyes)',
+    path: (id) => `/map?person=${encodeURIComponent(id)}`,
   },
 ];
 

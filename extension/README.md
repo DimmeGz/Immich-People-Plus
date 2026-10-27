@@ -74,8 +74,9 @@ When **Immeyes URL** is set in the options, the same row gets links that open in
 
 - **Схожі персони** → `<immeyes>/duplicates/person/<uuid>`
 - **Порівняти** → `<immeyes>/duplicates/compare/<uuid>`
+- **Мапа** → `<immeyes>/map?person=<uuid>`
 
-The list lives in `src/content/immeyes-links.ts`; adding a page (e.g. **Мапа** → `/map?person=<uuid>` once Immeyes has it) is one entry there. Without an Immeyes URL nothing is shown, and the links do not need the Person API.
+The list lives in `src/content/immeyes-links.ts`; adding a page is one entry there. Without an Immeyes URL nothing is shown, and the links do not need the Person API.
 
 ## Settings
 
@@ -155,10 +156,11 @@ The extension has no automated tests in the repository; after a change, run thro
 
 14. With Person API configured: **Person card** opens the modal, save works. Without it: no **Person card**.
 15. Options → set **Immeyes URL** → save → reload the person page: **Схожі персони** and **Порівняти** open `<immeyes>/duplicates/person/<uuid>` and `<immeyes>/duplicates/compare/<uuid>` in a new tab. Clear the field: the links are gone.
+16. With **Immeyes URL** set, **Мапа** on the person page opens `<immeyes>/map?person=<uuid>` in a new tab with that person’s photos on the map.
 
 **General**
 
-16. Clear all options: people sort, folder filter and the age filter (Immich birth dates) still work; no console errors from the extension.
+17. Clear all options: people sort, folder filter and the age filter (Immich birth dates) still work; no console errors from the extension.
 
 ## Project layout
 

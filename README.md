@@ -46,7 +46,7 @@ npm start
 - On `/people/{id}`, edit person card fields and save
 - On `/photos`, filter the timeline with **Вік від … до …** (needs birth dates), open a photo, reset; leave `/photos` and come back to the plain timeline
 - Open a photo with the info panel: people whose birth date is only in person-api show «Вік …» under their name, like Immich does for its own dates
-- Set **Immeyes URL** in the options and check the **Схожі персони** / **Порівняти** links on `/people/{id}`
+- Set **Immeyes URL** in the options and check the **Схожі персони** / **Порівняти** / **Мапа** links on `/people/{id}`
 - On `/folders?path=...`, use person and tag filters; try **Tag other photos** on a folder with unrecognized faces
 - Open and close a photo viewer and confirm active filter persists
 - Clear API settings and verify extension still works without person-api (the age filter still works with Immich birth dates)
