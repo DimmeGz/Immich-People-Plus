@@ -78,6 +78,18 @@ When **Immeyes URL** is set in the options, the same row gets links that open in
 
 The list lives in `src/content/immeyes-links.ts`; adding a page is one entry there. Without an Immeyes URL nothing is shown, and the links do not need the Person API.
 
+### Photographer in the photo info panel — optional (needs Immeyes)
+
+When **Immeyes URL** is set, the info panel (ⓘ) of a photo gets one block from Immeyes (the service next to Immich that reads photo EXIF) — who took the photo, with which camera body, under which author signature. It sits right under the camera / lens rows of **Details**, in the same light small text as the age line; a photo without camera or lens text gets it right after the **People** block instead. Rows appear only for what Immeyes knows:
+
+- **Фотограф: Alex Studio** — links to `<immeyes>/photographers/<id>`; a small mark says how the photographer was determined (**вручну**, **підпис**, **корпус**, **тека**); then up to three of the photographer’s own links (their label, or the domain without `www.`). Everything opens in a new tab.
+- **Корпус: Canon EOS R · 0123456789AB (1234 фото)** — camera name (EXIF model, with the make in front unless the model already starts with it), serial and how many library photos share this body → `<immeyes>/photographers?tab=bodies&open=…`.
+- **Підпис: Alex Studio (56 фото)** — the author signature from EXIF and its photo count → `<immeyes>/photographers?tab=signatures&open=…`.
+- **Nothing to show** — one gray line: «EXIF ще не прочитано», «телефон або без камери, Immeyes не читає», «файл не вдалось прочитати» or, when Immeyes read the file and found nothing, «фотограф невідомий». Immeyes has not seen the photo (404): «Immeyes ще не бачив це фото»; the service is down, has no state database (503) or does not answer: «Immeyes недоступний».
+- **How** — one `GET <immeyes>/api/photographers/asset/<id>` (no credentials) when a photo is open with the info panel shown, and again for each photo you move to; answers (and 404s) are cached per photo until the page is reloaded, «недоступний» is not, so the next visit to that photo asks again. Moving to another photo drops the old block at once and an answer that arrives late is ignored if it is not for the open photo. Reopening the panel never adds a second block. Without **Immeyes URL** nothing is requested and nothing is added.
+- **Needs** — Immeyes must answer `/api/photographers/*` with CORS for the address you open Immich at (it always allows the origin of its own `IMMICH_PUBLIC_URL`; any other address goes into its `CORS_ORIGINS`) and be reachable from the browser; with Immich on `https` the Immeyes URL has to be `https` too (the browser blocks `http` requests from an `https` page).
+- **Limits** — Immich’s camera and lens rows have no id of their own, so the block finds them through the search links Immich puts on the camera and lens text. A photo that has neither camera/lens text nor a People block with someone in it (screenshots, shared links without camera EXIF) gets no block. Like the age line, the block follows the photo in the address bar, so while the mouse is over another photo of a stack the panel may show that photo’s details but the block stays on the open one.
+
 ## Settings
 
 Open `chrome://extensions` → Immich People Plus → **Details** → **Extension options** and set:
@@ -86,7 +98,7 @@ Open `chrome://extensions` → Immich People Plus → **Details** → **Extensio
 - API key (`X-API-Key`)
 - Immeyes URL (optional, e.g. `http://immich-host:2284`)
 
-Every integration is optional: the people sort, folder filter and the `/photos` age filter (with birth dates set in Immich) work with no settings at all; Person API adds the person card, tags, the birth-date fallback and ages in the photo info panel; the Immeyes URL only adds links.
+Every integration is optional: the people sort, folder filter and the `/photos` age filter (with birth dates set in Immich) work with no settings at all; Person API adds the person card, tags, the birth-date fallback and ages in the photo info panel; the Immeyes URL adds the links and the photographer block.
 
 Chrome 111 or newer is required (the age filter’s page script uses `"world": "MAIN"`).
 
@@ -151,16 +163,22 @@ The extension has no automated tests in the repository; after a change, run thro
 
 12. With Person API configured, give someone a full birth date in their Person card and leave Immich’s empty; open one of their photos and the info panel: under their name in **People** is «Вік N» (or «Вік N місяців» for a baby), the tooltip shows the date and «person-api». Someone with an Immich birth date shows Immich’s own line only once.
 13. Next/previous to a photo of the same person from another year: the age changes, the old one never stays. A card with only the year shows a range («Вік 4–5») where the age is not certain. A photo from before the birth: no age. Without Person API: nothing added.
+14. With **Immeyes URL** set (open Immich in a new tab afterwards: a tab keeps the settings it read first), open a photo with the info panel ⓘ. Under the camera / lens rows (without camera EXIF: right after **People**) there is a block; check each state against Immeyes:
+    - a photo with a photographer: «Фотограф: …» with a small mark (вручну / підпис / корпус / тека) and up to three links; the name opens `<immeyes>/photographers/<id>`, every link a new tab;
+    - «Корпус: камера · серійний номер (N фото)» opens `<immeyes>/photographers?tab=bodies&open=<bodyKey>` and «Підпис: … (N фото)» opens `…?tab=signatures&open=<signature>`; a photo with only a body (or only a signature) shows only that row;
+    - nothing found: one gray line — «EXIF ще не прочитано» (photo just added, Immeyes has not read EXIF), «телефон або без камери, Immeyes не читає» (phone photo), «файл не вдалось прочитати», «фотограф невідомий» (read, nothing matched); a photo added to Immich after the last Immeyes sync: «Immeyes ще не бачив це фото»; Immeyes stopped or the URL wrong: «Immeyes недоступний»;
+    - next / previous: the previous photo’s block is gone at once and never stays under another photo; go back and forth between two photos: DevTools → Network shows one request per photo; close and reopen ⓘ several times: always exactly one block;
+    - clear **Immeyes URL** (new tab again): no block and no requests to Immeyes.
 
 **Person page (`/people/<uuid>`)**
 
-14. With Person API configured: **Person card** opens the modal, save works. Without it: no **Person card**.
-15. Options → set **Immeyes URL** → save → reload the person page: **Схожі персони** and **Порівняти** open `<immeyes>/duplicates/person/<uuid>` and `<immeyes>/duplicates/compare/<uuid>` in a new tab. Clear the field: the links are gone.
-16. With **Immeyes URL** set, **Мапа** on the person page opens `<immeyes>/map?person=<uuid>` in a new tab with that person’s photos on the map.
+15. With Person API configured: **Person card** opens the modal, save works. Without it: no **Person card**.
+16. Options → set **Immeyes URL** → save → reload the person page: **Схожі персони** and **Порівняти** open `<immeyes>/duplicates/person/<uuid>` and `<immeyes>/duplicates/compare/<uuid>` in a new tab. Clear the field: the links are gone.
+17. With **Immeyes URL** set, **Мапа** on the person page opens `<immeyes>/map?person=<uuid>` in a new tab with that person’s photos on the map.
 
 **General**
 
-17. Clear all options: people sort, folder filter and the age filter (Immich birth dates) still work; no console errors from the extension.
+18. Clear all options: people sort, folder filter and the age filter (Immich birth dates) still work; no console errors from the extension.
 
 ## Project layout
 
@@ -174,6 +192,7 @@ extension/
     age-filter-control.ts  The «Вік від … до …» inputs
     birth-date.ts          Birth dates (Immich, then Person API) and the date window per person
     detail-panel-age.ts    Info panel: age under people whose birth date is only in Person API
+    detail-panel-photographer.ts  Info panel: photographer, body and signature from Immeyes
     person-age.ts          Age on a photo in Immich's wording (also ranges for year-only dates)
     person-page.ts         /people/<id>: tools row (person card, Immeyes links)
     immeyes-links.ts       Link list for the Immeyes service

@@ -572,3 +572,53 @@ section.immich-ext-person-card-row > button:first-of-type {
   font-size: 0.75rem;
   line-height: 1rem;
 }
+
+/* Photographer from Immeyes in Immich's info panel, one block under the camera / lens rows. Lines up
+   with their text (24px icon + `gap-4`) and is as light and small as the age line; the rows around it
+   already have `py-4`, so it adds no vertical padding. After the People block (a photo without
+   camera EXIF) it takes that block's side padding instead. */
+.immich-ext-photographer {
+  padding: 0 0 0 2.5rem;
+  font-size: 0.875rem;
+  font-weight: 300;
+}
+
+.immich-ext-photographer--after-people {
+  padding: 0.5rem 1rem 0;
+}
+
+.immich-ext-photographer__row {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.immich-ext-photographer__row + .immich-ext-photographer__row {
+  margin-top: 0.125rem;
+}
+
+.immich-ext-photographer__row--muted {
+  opacity: 0.6;
+}
+
+.immich-ext-photographer a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.immich-ext-photographer a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.immich-ext-photographer__source {
+  margin-left: 0.125rem;
+  padding: 0 0.25rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+  font-size: 0.6875rem;
+  opacity: 0.6;
+}
+
+.immich-ext-photographer__links {
+  opacity: 0.8;
+}

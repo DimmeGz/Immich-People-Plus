@@ -36,7 +36,7 @@ export function getViewerAssetId(pathname: string): string | null {
   return VIEWER_ASSET_PATTERN.exec(pathname)?.[1]?.toLowerCase() ?? null;
 }
 
-function findPeopleLinks(): PersonLink[] {
+export function findPeopleLinks(): PersonLink[] {
   const panel = document.getElementById('detail-panel');
 
   if (!panel) {

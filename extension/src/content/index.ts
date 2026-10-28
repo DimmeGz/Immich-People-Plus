@@ -1,4 +1,5 @@
 import { syncDetailPanelAges } from './detail-panel-age';
+import { syncDetailPanelPhotographer } from './detail-panel-photographer';
 import {
   createFolderFilterController,
   isFolderAssetsPage,
@@ -86,6 +87,8 @@ async function syncWithRoute(): Promise<void> {
   syncPhotosAgeFilter();
   // Synchronous too: drops the previous photo's ages as soon as the viewer moves on.
   syncDetailPanelAges();
+  // Same for the photographer block: the previous photo's one goes at once, the new one is fetched.
+  syncDetailPanelPhotographer();
 
   if (!isExtensionContextValid()) {
     deactivatePeopleSort();
