@@ -47,7 +47,7 @@ npm start
 - On `/photos`, filter the timeline with **Вік від … до …** (needs birth dates), open a photo, reset; leave `/photos` and come back to the plain timeline
 - Open a photo with the info panel: people whose birth date is only in person-api show «Вік …» under their name, like Immich does for its own dates
 - Set **Immeyes URL** in the options and check the **Схожі персони** / **Порівняти** / **Мапа** links on `/people/{id}`
-- With **Immeyes URL** set, click **Хто знімав** on `/people/{id}`: a popup with photographers, camera bodies and signatures of that person's photos
+- With **Immeyes URL** set, click **Хто знімав** on `/people/{id}`: a popup with photographers, camera bodies and signatures of that person's photos (a body or signature already linked to a photographer by a rule shows «→ Ім'я» after it)
 - Open a photo with the info panel: with **Immeyes URL** set, a «Фотограф / Корпус / Підпис» block (or one gray line saying why there is none) appears under the camera and lens rows
 - On `/folders?path=...`, use person and tag filters; try **Tag other photos** on a folder with unrecognized faces
 - Open and close a photo viewer and confirm active filter persists

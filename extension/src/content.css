@@ -661,7 +661,6 @@ section.immich-ext-person-card-row > button:first-of-type {
 .immich-ext-who-shot__row {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: 0.75rem;
   font-size: 0.875rem;
 }
@@ -680,8 +679,24 @@ section.immich-ext-person-card-row > button:first-of-type {
   text-decoration: underline;
 }
 
+/* «→ Ім'я» after the name: the photographer a body, fingerprint or signature is linked to. Only the
+   name shrinks (ellipsis) when the row is tight; the count stays at the right edge. */
+.immich-ext-who-shot__owner {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  color: var(--ipp-text-muted);
+  text-decoration: none;
+}
+
+.immich-ext-who-shot__owner:hover {
+  color: var(--ipp-primary);
+  text-decoration: underline;
+}
+
 .immich-ext-who-shot__count {
   flex-shrink: 0;
+  margin-left: auto;
   color: var(--ipp-text-muted);
   font-variant-numeric: tabular-nums;
 }

@@ -15,20 +15,24 @@ const REQUEST_TIMEOUT_MS = 60_000;
 
 type Counted = { photos: number };
 /** `private`: a person's own camera rather than a photographer (absent in older Immeyes: false). */
-type PhotographerEntry = Counted & { id: string; name: string; private: boolean };
+type Photographer = { id: string; name: string; private: boolean };
+type PhotographerEntry = Counted & Photographer;
+/** `photographer`: whom a rule links the key to; null without a rule (and in an Immeyes without the field). */
 type BodyEntry = Counted & {
   bodyKey: string;
   make: string | null;
   model: string | null;
   serial: string | null;
+  photographer: Photographer | null;
 };
 type FingerprintEntry = Counted & {
   fingerprint: string;
   make: string | null;
   model: string | null;
   hash: string | null;
+  photographer: Photographer | null;
 };
-type SignatureEntry = Counted & { signature: string; raw: string };
+type SignatureEntry = Counted & { signature: string; raw: string; photographer: Photographer | null };
 
 type Summary = {
   total: number;
@@ -42,7 +46,9 @@ type Summary = {
   counts: { photographers: number; bodies: number; fingerprints: number; signatures: number };
 };
 
-type Row = { label: string; href: string; title: string; photos: number };
+type RowLink = { label: string; href: string; title: string };
+/** `photographer`: a muted link to the photographer the row's key is linked to, right after the name. */
+type Row = RowLink & { photos: number; photographer?: RowLink };
 
 function asCount(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
@@ -50,6 +56,13 @@ function asCount(value: unknown): number {
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() !== '' ? value : null;
+}
+
+function asPhotographer(value: unknown): Photographer | null {
+  const person = value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+  const id = asString(person?.id);
+  const name = asString(person?.name);
+  return id && name ? { id, name, private: person?.private === true } : null;
 }
 
 /** Rows of a list; one without its key (or not an object) is dropped instead of failing the popup. */
@@ -73,10 +86,8 @@ function parseSummary(value: unknown): Summary | null {
   const counts = (raw.counts ?? {}) as Record<string, unknown>;
 
   const photographers = parseList<PhotographerEntry>(raw.photographers, (item) => {
-    const person = item.photographer as Record<string, unknown> | null | undefined;
-    const id = asString(person?.id);
-    const name = asString(person?.name);
-    return id && name ? { id, name, private: person?.private === true, photos: asCount(item.photos) } : null;
+    const person = asPhotographer(item.photographer);
+    return person ? { ...person, photos: asCount(item.photos) } : null;
   });
 
   const bodies = parseList<BodyEntry>(raw.bodies, (item) => {
@@ -87,6 +98,7 @@ function parseSummary(value: unknown): Summary | null {
           make: asString(item.make),
           model: asString(item.model),
           serial: asString(item.serial),
+          photographer: asPhotographer(item.photographer),
           photos: asCount(item.photos),
         }
       : null;
@@ -101,6 +113,7 @@ function parseSummary(value: unknown): Summary | null {
           make: asString(item.make),
           model: asString(item.model),
           hash: asString(item.hash),
+          photographer: asPhotographer(item.photographer),
           photos: asCount(item.photos),
         }
       : null;
@@ -109,7 +122,9 @@ function parseSummary(value: unknown): Summary | null {
   const signatures = parseList<SignatureEntry>(raw.signatures, (item) => {
     const signature = asString(item.signature);
     const raw = asString(item.raw) ?? signature;
-    return signature && raw ? { signature, raw, photos: asCount(item.photos) } : null;
+    return signature && raw
+      ? { signature, raw, photographer: asPhotographer(item.photographer), photos: asCount(item.photos) }
+      : null;
   });
 
   return {
@@ -190,18 +205,27 @@ function element<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-function createRowItem({ label, href, title, photos }: Row): HTMLLIElement {
-  const item = element('li', 'immich-ext-who-shot__row');
-  const link = element('a', 'immich-ext-who-shot__name', label);
+function createLink(className: string, { label, href, title }: RowLink): HTMLAnchorElement {
+  const link = element('a', className, label);
   link.href = href;
   link.target = '_blank';
   link.rel = 'noopener noreferrer';
   link.title = title;
+  return link;
+}
+
+function createRowItem({ label, href, title, photos, photographer }: Row): HTMLLIElement {
+  const item = element('li', 'immich-ext-who-shot__row');
+  item.appendChild(createLink('immich-ext-who-shot__name', { label, href, title }));
+
+  if (photographer) {
+    item.appendChild(createLink('immich-ext-who-shot__owner', photographer));
+  }
 
   const count = element('span', 'immich-ext-who-shot__count', String(photos));
   count.title = `${photos} фото`;
 
-  item.append(link, count);
+  item.appendChild(count);
   return item;
 }
 
@@ -251,6 +275,16 @@ function summaryBody(immeyesUrl: string, personId: string, summary: Summary): HT
       photos: entry.photos,
     }));
 
+  // «→ Ім'я» after a body, fingerprint or signature a rule links to a photographer (`noun`: what is linked).
+  const ownerLink = (noun: string, owner: Photographer | null): RowLink | undefined =>
+    owner
+      ? {
+          label: `→ ${owner.name}`,
+          href: `${immeyesUrl}/photographers/${encodeURIComponent(owner.id)}?person=${encodedPerson}`,
+          title: `${noun} прив'язано до ${owner.private ? 'приватної камери' : 'фотографа'} «${owner.name}»`,
+        }
+      : undefined;
+
   // Private cameras (a person's own camera, not a photographer) get a list of their own.
   const photographers = summary.photographers.filter((entry) => !entry.private);
   const privateCameras = summary.photographers.filter((entry) => entry.private);
@@ -275,6 +309,7 @@ function summaryBody(immeyesUrl: string, personId: string, summary: Summary): HT
           href: `${immeyesUrl}/photographers?tab=bodies&open=${encodeURIComponent(entry.bodyKey)}`,
           title: `${label}: усі фото з цього корпусу в Immeyes`,
           photos: entry.photos,
+          photographer: ownerLink('Корпус', entry.photographer),
         };
       }),
       summary.counts.bodies,
@@ -294,6 +329,7 @@ function summaryBody(immeyesUrl: string, personId: string, summary: Summary): HT
             href: `${immeyesUrl}/photographers?tab=fingerprints&open=${open}`,
             title: `${label}: усі фото з цим відбитком камери в Immeyes`,
             photos: entry.photos,
+            photographer: ownerLink('Відбиток', entry.photographer),
           };
         }),
         summary.counts.fingerprints,
@@ -309,6 +345,7 @@ function summaryBody(immeyesUrl: string, personId: string, summary: Summary): HT
         href: `${immeyesUrl}/photographers?tab=signatures&open=${encodeURIComponent(entry.signature)}`,
         title: `${entry.raw}: усі фото з цим підписом в Immeyes`,
         photos: entry.photos,
+        photographer: ownerLink('Підпис', entry.photographer),
       })),
       summary.counts.signatures,
     ),
