@@ -11,7 +11,7 @@ person-api/    Person cards, tags, and metadata API (SQLite)
 
 ## Chrome extension
 
-Adds optional UI on top of Immich: people sorting, folder filtering by person, an age filter for the main timeline, ages from person-api in the photo info panel, links to Immeyes and the photographer of a photo from Immeyes in the info panel.
+Adds optional UI on top of Immich: people sorting, folder filtering by person, an age filter for the main timeline, ages from person-api in the photo info panel, links to Immeyes, who took a person's photos (a popup on the person page) and the photographer of a photo in the info panel, both from Immeyes.
 
 See [extension/README.md](extension/README.md) for features, install, and development.
 
@@ -47,6 +47,7 @@ npm start
 - On `/photos`, filter the timeline with **Вік від … до …** (needs birth dates), open a photo, reset; leave `/photos` and come back to the plain timeline
 - Open a photo with the info panel: people whose birth date is only in person-api show «Вік …» under their name, like Immich does for its own dates
 - Set **Immeyes URL** in the options and check the **Схожі персони** / **Порівняти** / **Мапа** links on `/people/{id}`
+- With **Immeyes URL** set, click **Хто знімав** on `/people/{id}`: a popup with photographers, camera bodies and signatures of that person's photos
 - Open a photo with the info panel: with **Immeyes URL** set, a «Фотограф / Корпус / Підпис» block (or one gray line saying why there is none) appears under the camera and lens rows
 - On `/folders?path=...`, use person and tag filters; try **Tag other photos** on a folder with unrecognized faces
 - Open and close a photo viewer and confirm active filter persists

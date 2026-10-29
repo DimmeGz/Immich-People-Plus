@@ -1,3 +1,5 @@
+import { openWhoShotPopup } from './who-shot-popup';
+
 export type ImmeyesLink = {
   label: string;
   title: string;
@@ -26,6 +28,23 @@ export const IMMEYES_LINKS: readonly ImmeyesLink[] = [
   },
 ];
 
+/** «Хто знімав»: a popup rather than a link, and it asks Immeyes only when clicked. */
+function createWhoShotButton(immeyesUrl: string, personId: string): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'immich-ext-person-card__trigger immich-ext-immeyes-links__link';
+  button.dataset.immichPeoplePlus = 'who-shot-trigger';
+  button.title = 'Хто знімав фото цієї персони: фотографи, корпуси й підписи (Immeyes)';
+  button.textContent = 'Хто знімав';
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openWhoShotPopup(immeyesUrl, personId);
+  });
+
+  return button;
+}
+
 export function createImmeyesLinks(immeyesUrl: string, personId: string): HTMLElement {
   const root = document.createElement('nav');
   root.className = 'immich-ext-immeyes-links';
@@ -44,6 +63,8 @@ export function createImmeyesLinks(immeyesUrl: string, personId: string): HTMLEl
     anchor.addEventListener('click', (event) => event.stopPropagation());
     root.appendChild(anchor);
   }
+
+  root.appendChild(createWhoShotButton(immeyesUrl, personId));
 
   return root;
 }

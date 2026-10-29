@@ -7,6 +7,7 @@ import {
   waitForPersonInfoSection,
 } from './person-card';
 import { isExtensionContextValid, loadImmeyesUrl } from './storage';
+import { closeWhoShotPopup } from './who-shot-popup';
 
 const TOOLS_SELECTOR = '[data-immich-people-plus="person-tools"]';
 const ROW_CLASS = 'immich-ext-person-card-row';
@@ -52,6 +53,7 @@ class PersonToolsController {
 
   dispose(): void {
     closePersonCardModal();
+    closeWhoShotPopup();
     this.#tools.remove();
     this.#section.classList.remove(ROW_CLASS);
   }

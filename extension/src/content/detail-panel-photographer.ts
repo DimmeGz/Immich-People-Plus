@@ -3,8 +3,9 @@ import { isExtensionContextValid, loadImmeyesUrl } from './storage';
 
 /**
  * Photographer block in Immich's info panel (DetailPanel.svelte), from Immeyes
- * (`GET <Immeyes URL>/api/photographers/asset/<assetId>`): the photographer, the camera body and the
- * author signature of the open photo, each only when Immeyes knows it. Without "Immeyes URL" in the
+ * (`GET <Immeyes URL>/api/photographers/asset/<assetId>`): the photographer, the camera body, the
+ * camera fingerprint (a body without a serial, told apart by its maker note) and the author signature
+ * of the open photo, each only when Immeyes knows it. Without "Immeyes URL" in the
  * options nothing is added and nothing is requested.
  */
 
@@ -15,20 +16,23 @@ const BLOCK_AFTER_PEOPLE_CLASS = `${BLOCK_CLASS} ${BLOCK_CLASS}--after-people`;
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_LINKS = 3;
 
-type SourceKind = 'asset' | 'signature' | 'body' | 'folder';
+type SourceKind = 'tag' | 'signature' | 'body' | 'fingerprint' | 'folder';
 
 type PhotographerLink = { url: string; label: string | null };
 
 type Attribution = {
-  photographer: { id: string; name: string; links: PhotographerLink[] } | null;
+  /** `private`: a person's own camera rather than a photographer (absent in older Immeyes: false). */
+  photographer: { id: string; name: string; private: boolean; links: PhotographerLink[] } | null;
   source: string | null;
   make: string | null;
   model: string | null;
   serial: string | null;
   bodyKey: string | null;
+  /** "make|model|hash" (see `fingerprintParts`); null for photos of cameras with a serial. */
+  fingerprint: string | null;
   signature: string | null;
   signatureRaw: string | null;
-  library: { body: number; signature: number };
+  library: { body: number; fingerprint: number; signature: number };
   exifStatus: string | null;
 };
 
@@ -40,9 +44,10 @@ type Attribution = {
 type Outcome = { kind: 'data'; data: Attribution } | { kind: 'notSynced' } | { kind: 'unavailable' };
 
 const SOURCE_MARKS: Readonly<Record<SourceKind, { text: string; title: string }>> = {
-  asset: { text: 'вручну', title: 'Фотографа призначено цьому фото вручну' },
+  tag: { text: 'тег', title: 'Фотографа визначено за тегом Immich' },
   signature: { text: 'підпис', title: 'Фотографа визначено за підписом автора в EXIF' },
   body: { text: 'корпус', title: 'Фотографа визначено за корпусом камери' },
+  fingerprint: { text: 'відбиток', title: 'Фотографа визначено за відбитком камери без серійника' },
   folder: { text: 'тека', title: 'Фотографа визначено за текою, у якій лежить фото' },
 };
 
@@ -96,16 +101,26 @@ function parseAttribution(value: unknown): Attribution | null {
   return {
     photographer:
       photographerId && photographerName
-        ? { id: photographerId, name: photographerName, links: parseLinks(photographer?.links) }
+        ? {
+            id: photographerId,
+            name: photographerName,
+            private: photographer?.private === true,
+            links: parseLinks(photographer?.links),
+          }
         : null,
     source: asString(raw.source),
     make: asString(raw.make),
     model: asString(raw.model),
     serial: asString(raw.serial),
     bodyKey: asString(raw.bodyKey),
+    fingerprint: asString(raw.fingerprint),
     signature: asString(raw.signature),
     signatureRaw: asString(raw.signatureRaw),
-    library: { body: asCount(library.body), signature: asCount(library.signature) },
+    library: {
+      body: asCount(library.body),
+      fingerprint: asCount(library.fingerprint),
+      signature: asCount(library.signature),
+    },
     exifStatus: asString(raw.exifStatus),
   };
 }
@@ -173,6 +188,42 @@ export function cameraName(make: string | null, model: string | null): string {
   return modelHasMake ? trimmedModel : `${trimmedMake} ${trimmedModel}`;
 }
 
+/** "Canon EOS R · 0123456789AB": camera name and serial of a body (the serial is left out when unknown). */
+export function describeBody(body: {
+  make: string | null;
+  model: string | null;
+  serial: string | null;
+  bodyKey: string;
+}): string {
+  // `bodyKey` is "make|model|serial"; its first two parts are the fallback when EXIF fields are empty.
+  const camera =
+    cameraName(body.make, body.model) || body.bodyKey.split('|').slice(0, 2).filter(Boolean).join(' ');
+
+  return [camera || 'камера невідома', body.serial].filter(Boolean).join(' · ');
+}
+
+/**
+ * A camera fingerprint is "make|model|hash": the hash is the last `|` segment, the model everything
+ * between it and the make (a model may itself contain `|`). `make` and `model` given by Immeyes next
+ * to the key win; the key fills in what they lack.
+ */
+export function fingerprintParts(
+  fingerprint: string,
+  make: string | null = null,
+  model: string | null = null,
+  hash: string | null = null,
+): { camera: string; hash: string } {
+  const segments = fingerprint.split('|');
+  const keyHash = segments.length > 1 ? (segments.at(-1) ?? '') : fingerprint;
+  const keyMake = segments.length > 1 ? segments[0] : '';
+  const keyModel = segments.slice(1, -1).join('|');
+
+  return {
+    camera: cameraName(make ?? (keyMake || null), model ?? (keyModel || null)) || 'камера невідома',
+    hash: hash ?? keyHash,
+  };
+}
+
 /** Only http(s) goes into an `href`: the links come from Immeyes' database, not from this extension. */
 function linkText(link: PhotographerLink): { href: string; text: string } | null {
   let url: URL;
@@ -222,12 +273,13 @@ function photographerRow(immeyesUrl: string, data: Attribution): HTMLElement | n
     return null;
   }
 
-  const row = createRow('Фотограф');
+  // A private camera is a person's own camera, not a photographer: the label says so.
+  const row = createRow(photographer.private ? 'Камера' : 'Фотограф');
   row.appendChild(
     createAnchor(
       `${immeyesUrl}/photographers/${encodeURIComponent(photographer.id)}`,
       photographer.name,
-      'Фотограф в Immeyes',
+      photographer.private ? 'Приватна камера в Immeyes' : 'Фотограф в Immeyes',
     ),
   );
 
@@ -263,16 +315,29 @@ function bodyRow(immeyesUrl: string, data: Attribution): HTMLElement | null {
     return null;
   }
 
-  // `bodyKey` is "make|model|serial"; its first two parts are the fallback when EXIF fields are empty.
-  const camera =
-    cameraName(data.make, data.model) || data.bodyKey.split('|').slice(0, 2).filter(Boolean).join(' ');
-  const text = [camera || 'камера невідома', data.serial].filter(Boolean).join(' · ');
   const row = createRow('Корпус');
   row.appendChild(
     createAnchor(
       `${immeyesUrl}/photographers?tab=bodies&open=${encodeURIComponent(data.bodyKey)}`,
-      `${text} (${data.library.body} фото)`,
+      `${describeBody({ ...data, bodyKey: data.bodyKey })} (${data.library.body} фото)`,
       'Усі фото з цього корпусу в Immeyes',
+    ),
+  );
+  return row;
+}
+
+function fingerprintRow(immeyesUrl: string, data: Attribution): HTMLElement | null {
+  if (!data.fingerprint) {
+    return null;
+  }
+
+  const { camera, hash } = fingerprintParts(data.fingerprint, data.make, data.model);
+  const row = createRow('Відбиток');
+  row.appendChild(
+    createAnchor(
+      `${immeyesUrl}/photographers?tab=fingerprints&open=${encodeURIComponent(data.fingerprint)}`,
+      `${camera} · ${hash} (${data.library.fingerprint} фото)`,
+      'Усі фото з цим відбитком камери в Immeyes',
     ),
   );
   return row;
@@ -319,6 +384,7 @@ function createBlock(immeyesUrl: string, assetId: string, outcome: Outcome): HTM
   const rows = [
     photographerRow(immeyesUrl, outcome.data),
     bodyRow(immeyesUrl, outcome.data),
+    fingerprintRow(immeyesUrl, outcome.data),
     signatureRow(immeyesUrl, outcome.data),
   ].flatMap((row) => row ?? []);
 

@@ -75,15 +75,27 @@ When **Immeyes URL** is set in the options, the same row gets links that open in
 - **Схожі персони** → `<immeyes>/duplicates/person/<uuid>`
 - **Порівняти** → `<immeyes>/duplicates/compare/<uuid>`
 - **Мапа** → `<immeyes>/map?person=<uuid>`
+- **Хто знімав** — not a link but a button, see below.
 
 The list lives in `src/content/immeyes-links.ts`; adding a page is one entry there. Without an Immeyes URL nothing is shown, and the links do not need the Person API.
+
+#### «Хто знімав» popup
+
+**Хто знімав** opens a popup (the person card’s overlay and panel; close with **✕**, **Esc** or a click on the background) with who took the photos this person is on, from Immeyes (`GET <immeyes>/api/photographers/person/<uuid>`, no credentials):
+
+- **Header** — «Фото: N · з фотографом: N · без даних: N» (photos of the person Immeyes knows; with a photographer; with no photographer, no serial and no signature — phones, unread files).
+- **Фотографи**, **Корпуси**, **Підписи** — most frequent first, 15 rows each, then **ще N** (how many different ones there are in all, minus 15) which shows the rest of what Immeyes sent; if the person has more than it sent, a note says «Показано найчастіші: N з M». An empty section says «немає». Every row is a link in a new tab with the photo count on the right: a photographer → `<immeyes>/photographers/<id>?person=<uuid>`, a camera body («Canon EOS R · serial», same naming as in the info panel block) → `<immeyes>/photographers?tab=bodies&open=<bodyKey>`, a signature → `<immeyes>/photographers?tab=signatures&open=<signature>`.
+- **Приватні камери** and **Відбитки** — two more sections that appear only when there is something in them. **Приватні камери** (photographers Immeyes marks `private`: the person’s own camera rather than a photographer) sit right below **Фотографи**, which then lists only the real ones; a row is the same link to `<immeyes>/photographers/<id>?person=<uuid>`. **Відбитки** (cameras without a serial, see above) sit between **Корпуси** and **Підписи**: «SONY DSC-P200 · відбиток 0ce356debb63» → `<immeyes>/photographers?tab=fingerprints&open=<fingerprint>`. Older Immeyes without these fields simply shows neither.
+- **When** — the request is made only on the click (for a person with many photos it can take seconds; the popup shows «Рахую…» meanwhile and can be closed, reopening shares the running request). The answer is cached per person until the page is reloaded; a failure («Immeyes недоступний»: 503, network error, anything but a normal answer) is not, the next click asks again. The popup closes when you leave the person page.
 
 ### Photographer in the photo info panel — optional (needs Immeyes)
 
 When **Immeyes URL** is set, the info panel (ⓘ) of a photo gets one block from Immeyes (the service next to Immich that reads photo EXIF) — who took the photo, with which camera body, under which author signature. It sits right under the camera / lens rows of **Details**, in the same light small text as the age line; a photo without camera or lens text gets it right after the **People** block instead. Rows appear only for what Immeyes knows:
 
-- **Фотограф: Alex Studio** — links to `<immeyes>/photographers/<id>`; a small mark says how the photographer was determined (**вручну**, **підпис**, **корпус**, **тека**); then up to three of the photographer’s own links (their label, or the domain without `www.`). Everything opens in a new tab.
+- **Фотограф: Alex Studio** — links to `<immeyes>/photographers/<id>`; a small mark says how the photographer was determined (**тег**, **підпис**, **корпус**, **відбиток**, **тека**); then up to three of the photographer’s own links (their label, or the domain without `www.`). Everything opens in a new tab.
 - **Корпус: Canon EOS R · 0123456789AB (1234 фото)** — camera name (EXIF model, with the make in front unless the model already starts with it), serial and how many library photos share this body → `<immeyes>/photographers?tab=bodies&open=…`.
+- **Відбиток: SONY DSC-P200 · 0ce356debb63 (56 фото)** — for cameras that write no serial, which Immeyes still tells apart by a per-unit region of the maker note (a *fingerprint*, `make|model|hash`): camera name, the hash and how many library photos share it → `<immeyes>/photographers?tab=fingerprints&open=…`. The photographer’s mark can then be **відбиток**.
+- **Камера: …** — when the “photographer” is a person’s *private camera* (`private: true` in Immeyes) the first row says «Камера» instead of «Фотограф»; it still links to the same Immeyes page.
 - **Підпис: Alex Studio (56 фото)** — the author signature from EXIF and its photo count → `<immeyes>/photographers?tab=signatures&open=…`.
 - **Nothing to show** — one gray line: «EXIF ще не прочитано», «телефон або без камери, Immeyes не читає», «файл не вдалось прочитати» or, when Immeyes read the file and found nothing, «фотограф невідомий». Immeyes has not seen the photo (404): «Immeyes ще не бачив це фото»; the service is down, has no state database (503) or does not answer: «Immeyes недоступний».
 - **How** — one `GET <immeyes>/api/photographers/asset/<id>` (no credentials) when a photo is open with the info panel shown, and again for each photo you move to; answers (and 404s) are cached per photo until the page is reloaded, «недоступний» is not, so the next visit to that photo asks again. Moving to another photo drops the old block at once and an answer that arrives late is ignored if it is not for the open photo. Reopening the panel never adds a second block. Without **Immeyes URL** nothing is requested and nothing is added.
@@ -164,8 +176,8 @@ The extension has no automated tests in the repository; after a change, run thro
 12. With Person API configured, give someone a full birth date in their Person card and leave Immich’s empty; open one of their photos and the info panel: under their name in **People** is «Вік N» (or «Вік N місяців» for a baby), the tooltip shows the date and «person-api». Someone with an Immich birth date shows Immich’s own line only once.
 13. Next/previous to a photo of the same person from another year: the age changes, the old one never stays. A card with only the year shows a range («Вік 4–5») where the age is not certain. A photo from before the birth: no age. Without Person API: nothing added.
 14. With **Immeyes URL** set (open Immich in a new tab afterwards: a tab keeps the settings it read first), open a photo with the info panel ⓘ. Under the camera / lens rows (without camera EXIF: right after **People**) there is a block; check each state against Immeyes:
-    - a photo with a photographer: «Фотограф: …» with a small mark (вручну / підпис / корпус / тека) and up to three links; the name opens `<immeyes>/photographers/<id>`, every link a new tab;
-    - «Корпус: камера · серійний номер (N фото)» opens `<immeyes>/photographers?tab=bodies&open=<bodyKey>` and «Підпис: … (N фото)» opens `…?tab=signatures&open=<signature>`; a photo with only a body (or only a signature) shows only that row;
+    - a photo with a photographer: «Фотограф: …» with a small mark (тег / підпис / корпус / тека) and up to three links; the name opens `<immeyes>/photographers/<id>`, every link a new tab;
+    - «Корпус: камера · серійний номер (N фото)» opens `<immeyes>/photographers?tab=bodies&open=<bodyKey>` and «Підпис: … (N фото)» opens `…?tab=signatures&open=<signature>`; a photo with only a body (or only a signature) shows only that row; a photo of a camera without a serial that Immeyes knows by fingerprint (Sony DSC-P200) shows «Відбиток: камера · hash (N фото)» after the body row, linking to `…?tab=fingerprints&open=<fingerprint>`, and the photographer’s mark may say **відбиток**; a photographer Immeyes marks as a private camera shows «Камера: …» instead of «Фотограф: …»;
     - nothing found: one gray line — «EXIF ще не прочитано» (photo just added, Immeyes has not read EXIF), «телефон або без камери, Immeyes не читає» (phone photo), «файл не вдалось прочитати», «фотограф невідомий» (read, nothing matched); a photo added to Immich after the last Immeyes sync: «Immeyes ще не бачив це фото»; Immeyes stopped or the URL wrong: «Immeyes недоступний»;
     - next / previous: the previous photo’s block is gone at once and never stays under another photo; go back and forth between two photos: DevTools → Network shows one request per photo; close and reopen ⓘ several times: always exactly one block;
     - clear **Immeyes URL** (new tab again): no block and no requests to Immeyes.
@@ -175,10 +187,16 @@ The extension has no automated tests in the repository; after a change, run thro
 15. With Person API configured: **Person card** opens the modal, save works. Without it: no **Person card**.
 16. Options → set **Immeyes URL** → save → reload the person page: **Схожі персони** and **Порівняти** open `<immeyes>/duplicates/person/<uuid>` and `<immeyes>/duplicates/compare/<uuid>` in a new tab. Clear the field: the links are gone.
 17. With **Immeyes URL** set, **Мапа** on the person page opens `<immeyes>/map?person=<uuid>` in a new tab with that person’s photos on the map.
+18. With **Immeyes URL** set, click **Хто знімав** on the person page (open it in a fresh tab; check DevTools → Network: nothing goes to Immeyes before the click): the popup shows «Рахую…» and then «Фото: … · з фотографом: … · без даних: …» and the lists **Фотографи**, **Корпуси**, **Підписи**. Check that:
+    - the numbers fit the person (total ≈ their photos known to Immeyes), names open `<immeyes>/photographers/<id>?person=<uuid>`, bodies and signatures open the matching Immeyes tab with the group opened, all in a new tab;
+    - a section with more than 15 rows ends with **ще N**, which expands the rest; a person with no known photos shows «немає» in **Фотографи**, **Корпуси** and **Підписи**; **Відбитки** (a person photographed with a serial-less camera Immeyes fingerprints) and **Приватні камери** (their own cameras, photographers marked private in Immeyes, split off **Фотографи**) show only when they have rows;
+    - **✕**, **Esc** and a click on the dark background each close it; click again: it opens at once from cache (no new request); the person page behind does not react to Esc or the clicks;
+    - Immeyes stopped (`docker stop`) or the URL wrong: «Immeyes недоступний»; start it again and click once more — it loads (a failure is not cached);
+    - go to another person while it is open: it closes; clear **Immeyes URL** (new tab): no **Хто знімав**.
 
 **General**
 
-18. Clear all options: people sort, folder filter and the age filter (Immich birth dates) still work; no console errors from the extension.
+19. Clear all options: people sort, folder filter and the age filter (Immich birth dates) still work; no console errors from the extension.
 
 ## Project layout
 
@@ -196,6 +214,7 @@ extension/
     person-age.ts          Age on a photo in Immich's wording (also ranges for year-only dates)
     person-page.ts         /people/<id>: tools row (person card, Immeyes links)
     immeyes-links.ts       Link list for the Immeyes service
+    who-shot-popup.ts      «Хто знімав» popup (photographers, private cameras, bodies, fingerprints, signatures)
     person-card.ts         Person card modal (Person API)
     storage.ts             Extension storage (settings, saved filters)
   src/page/                Page-world script (document_start): filters Immich's timeline API
