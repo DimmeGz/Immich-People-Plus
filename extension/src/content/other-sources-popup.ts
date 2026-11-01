@@ -5,13 +5,15 @@
  * - The button is mounted next to the Immeyes links once `GET <Immeyes URL>/api/flickr/persons/<id>/count`
  *   answers; an Immeyes without the Flickr feature (404, network error) gets no button at all.
  * - The popup, opened by that button, lists confirmed and new matches
- *   (`.../matches?max=0.5&show=yes|new`) and saves the user's «так» / «ні» verdict at once.
+ *   (`.../matches?max=0.5&show=yes|new`) and saves the user's «так» / «ні» verdict at once. It has two
+ *   display modes, «порівняння» (cards with both pictures) and «плитка» (Flickr tiles), over the same lists.
  */
 
 const MODAL_SELECTOR = '[data-immich-people-plus="sources-modal"]';
 const TITLE_ID = 'immich-ext-sources-title';
 /** The usual cut for "same person"; fixed, the popup has no control for it. */
 const MAX_DISTANCE = 0.5;
+const MODE_STORAGE_KEY = 'immich-people-plus.sources-mode';
 const COUNT_TIMEOUT_MS = 30_000;
 const LIST_TIMEOUT_MS = 60_000;
 const VERDICT_TIMEOUT_MS = 15_000;
@@ -339,6 +341,16 @@ function percent(fraction: number): string {
   return `${Math.round(fraction * 10_000) / 100}%`;
 }
 
+/** A hotlinked picture: lazy, no referrer. The caller sets `src` once its listeners are in place. */
+function createImage(alt: string, className: string): HTMLImageElement {
+  const image = element('img', className);
+  image.alt = alt;
+  image.loading = 'lazy';
+  image.decoding = 'async';
+  image.referrerPolicy = 'no-referrer';
+  return image;
+}
+
 /**
  * A square slot with the picture at its natural aspect and the face outlined. The frame hugs the
  * picture (`inline-block`), so the percentages of the box are fractions of the picture itself.
@@ -346,11 +358,7 @@ function percent(fraction: number): string {
 function createPicture(href: string, newTab: boolean, src: string, alt: string, box: Box | null): HTMLElement {
   const slot = createLink('immich-ext-sources__slot', href, newTab);
   const frame = element('span', 'immich-ext-sources__frame');
-  const image = element('img', 'immich-ext-sources__image');
-  image.alt = alt;
-  image.loading = 'lazy';
-  image.decoding = 'async';
-  image.referrerPolicy = 'no-referrer';
+  const image = createImage(alt, 'immich-ext-sources__image');
   frame.appendChild(image);
 
   if (box) {
@@ -374,17 +382,80 @@ function photostreamUrl(owner: string): string {
   return `https://www.flickr.com/photos/${encodeURIComponent(owner).replace(/%40/g, '@')}/`;
 }
 
-type Card = {
+type Mode = 'compare' | 'tiles';
+
+const MODES: readonly { mode: Mode; label: string }[] = [
+  { mode: 'compare', label: 'порівняння' },
+  { mode: 'tiles', label: 'плитка' },
+];
+
+/** Kept in the page's `localStorage` (a per-viewer convenience); anything but «плитка» reads as the default. */
+function loadMode(): Mode {
+  try {
+    return localStorage.getItem(MODE_STORAGE_KEY) === 'tiles' ? 'tiles' : 'compare';
+  } catch {
+    return 'compare';
+  }
+}
+
+function saveMode(mode: Mode): void {
+  try {
+    localStorage.setItem(MODE_STORAGE_KEY, mode);
+  } catch {
+    // storage blocked: the choice just lasts until the popup is closed
+  }
+}
+
+/**
+ * One match as the lists hold it, whatever the mode: the verdict handling works on this, a view only
+ * shows it (and is thrown away and made again when the mode changes).
+ */
+type Entry = {
   match: Match;
+  /** A verdict is being saved: further clicks wait, so the answers cannot arrive out of order. */
+  saving: boolean;
+  /** The last save failed: the error line shows until the next attempt. */
+  failed: boolean;
+  view: View | null;
+};
+
+/** What every mode's item has: the two verdict buttons, the error line, and maybe the «нове» badge. */
+type View = {
   element: HTMLElement;
   yes: HTMLButtonElement;
   no: HTMLButtonElement;
   error: HTMLElement;
-  /** A verdict is being saved: further clicks wait, so the answers cannot arrive out of order. */
-  saving: boolean;
+  badge: HTMLElement | null;
 };
 
-function createCard(match: Match, onVerdict: (card: Card, pressed: 'yes' | 'no') => void): Card {
+type VerdictHandler = (entry: Entry, pressed: 'yes' | 'no') => void;
+
+function createVerdictButtons(
+  entry: Entry,
+  onVerdict: VerdictHandler,
+  className: string,
+): { root: HTMLElement; yes: HTMLButtonElement; no: HTMLButtonElement } {
+  const root = element('div', className);
+  const yes = element('button', 'immich-ext-sources__verdict immich-ext-sources__verdict--yes', 'так');
+  const no = element('button', 'immich-ext-sources__verdict immich-ext-sources__verdict--no', 'ні');
+  yes.type = 'button';
+  no.type = 'button';
+  yes.addEventListener('click', () => onVerdict(entry, 'yes'));
+  no.addEventListener('click', () => onVerdict(entry, 'no'));
+  root.append(yes, no);
+  return { root, yes, no };
+}
+
+function createErrorLine(): HTMLElement {
+  const error = element('p', 'immich-ext-sources__error', 'Не вдалося зберегти вердикт');
+  error.hidden = true;
+  error.setAttribute('role', 'alert');
+  return error;
+}
+
+/** «порівняння»: the Flickr picture and the library photo side by side, the facts under them. */
+function createCard(entry: Entry, onVerdict: VerdictHandler): View {
+  const { match } = entry;
   const { photo, asset } = match;
   const root = element('article', 'immich-ext-sources__card');
   root.dataset.matchId = String(match.id);
@@ -416,35 +487,70 @@ function createCard(match: Match, onVerdict: (card: Card, pressed: 'yes' | 'no')
   source.append(owner, element('span', 'immich-ext-sources__source', 'Flickr'));
   meta.appendChild(source);
 
-  const verdicts = element('div', 'immich-ext-sources__verdicts');
-  const yes = element('button', 'immich-ext-sources__verdict immich-ext-sources__verdict--yes', 'так');
-  const no = element('button', 'immich-ext-sources__verdict immich-ext-sources__verdict--no', 'ні');
-  yes.type = 'button';
-  no.type = 'button';
-  verdicts.append(yes, no);
-
-  const error = element('p', 'immich-ext-sources__error');
-  error.hidden = true;
-  error.setAttribute('role', 'alert');
-
+  const { root: verdicts, yes, no } = createVerdictButtons(entry, onVerdict, 'immich-ext-sources__verdicts');
+  const error = createErrorLine();
   root.append(pictures, meta, verdicts, error);
 
-  const card: Card = { match, element: root, yes, no, error, saving: false };
-  yes.addEventListener('click', () => onVerdict(card, 'yes'));
-  no.addEventListener('click', () => onVerdict(card, 'no'));
-  paintVerdict(card);
-
-  return card;
+  return { element: root, yes, no, error, badge: null };
 }
 
-function paintVerdict(card: Card): void {
-  const { verdict } = card.match;
-  card.yes.classList.toggle('is-active', verdict === 'yes');
-  card.no.classList.toggle('is-active', verdict === 'no');
-  card.yes.setAttribute('aria-pressed', String(verdict === 'yes'));
-  card.no.setAttribute('aria-pressed', String(verdict === 'no'));
-  card.yes.disabled = card.saving;
-  card.no.disabled = card.saving;
+/**
+ * «плитка»: only the Flickr picture, cropped to a square tile that links to its Flickr page; the
+ * verdict bar slides over the bottom edge on hover or focus, the error line is under the tile.
+ */
+function createTile(entry: Entry, onVerdict: VerdictHandler): View {
+  const { match } = entry;
+  const { photo } = match;
+  const root = element('article', 'immich-ext-sources__tile');
+  root.dataset.matchId = String(match.id);
+  root.dataset.distance = String(match.distance);
+
+  const frame = element('div', 'immich-ext-sources__tile-frame');
+  // «Alice Photo · 12.03.2019 · відстань 0,374» (no date part when unknown)
+  const label = [
+    photo.ownerLabel,
+    photo.takenAt ? formatDate(photo.takenAt) : null,
+    `відстань ${formatDistance(match.distance)}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const link = createLink('immich-ext-sources__tile-link', photo.pageUrl, true);
+  link.title = label;
+  link.setAttribute('aria-label', label);
+
+  const image = createImage('Flickr', 'immich-ext-sources__tile-image');
+  image.src = photo.thumbUrl;
+  link.appendChild(image);
+
+  const badge = element('span', 'immich-ext-sources__badge', 'нове');
+  const { root: verdicts, yes, no } = createVerdictButtons(entry, onVerdict, 'immich-ext-sources__tile-verdicts');
+  frame.append(link, badge, verdicts);
+
+  const error = createErrorLine();
+  root.append(frame, error);
+
+  return { element: root, yes, no, error, badge };
+}
+
+function paintView(entry: Entry): void {
+  const view = entry.view;
+
+  if (!view) {
+    return;
+  }
+
+  const { verdict } = entry.match;
+  view.yes.classList.toggle('is-active', verdict === 'yes');
+  view.no.classList.toggle('is-active', verdict === 'no');
+  view.yes.setAttribute('aria-pressed', String(verdict === 'yes'));
+  view.no.setAttribute('aria-pressed', String(verdict === 'no'));
+  view.yes.disabled = entry.saving;
+  view.no.disabled = entry.saving;
+  view.error.hidden = !entry.failed;
+
+  if (view.badge) {
+    view.badge.hidden = verdict !== null;
+  }
 }
 
 type Section = { title: string; root: HTMLElement; heading: HTMLElement; grid: HTMLElement };
@@ -457,85 +563,118 @@ function createSection(title: string): Section {
   return { root, heading, grid, title };
 }
 
-/** Puts a card into `grid` among the others by distance (closest first, like the lists come). */
-function insertByDistance(grid: HTMLElement, card: Card): void {
-  const after = Array.from(grid.children).find(
-    (child) => Number((child as HTMLElement).dataset.distance) > card.match.distance,
-  );
-  grid.insertBefore(card.element, after ?? null);
+/** Puts an item into `grid` among the others by distance (closest first, like the lists come). */
+function insertByDistance(grid: HTMLElement, item: HTMLElement, distance: number): void {
+  let before: Element | null = null;
+
+  for (
+    let child = grid.lastElementChild;
+    child instanceof HTMLElement && Number(child.dataset.distance) > distance;
+    child = child.previousElementSibling
+  ) {
+    before = child;
+  }
+
+  grid.insertBefore(item, before);
 }
 
-function popupBody(immeyesUrl: string, personId: string, confirmed: Match[], fresh: Match[]): HTMLElement[] {
+type Lists = { nodes: HTMLElement[]; setMode: (mode: Mode) => void };
+
+function createLists(
+  immeyesUrl: string,
+  personId: string,
+  confirmed: Match[],
+  fresh: Match[],
+  initialMode: Mode,
+): Lists {
   const confirmedSection = createSection('Підтверджені');
   const freshSection = createSection('Нові');
+  const sections = [confirmedSection, freshSection];
   const empty = element('p', 'immich-ext-sources__empty', 'немає');
+  const entries: Entry[] = [...confirmed, ...fresh]
+    .sort((a, b) => a.distance - b.distance)
+    .map((match) => ({ match, saving: false, failed: false, view: null }));
+  let mode = initialMode;
 
   const sync = () => {
-    for (const section of [confirmedSection, freshSection]) {
+    for (const section of sections) {
       const size = section.grid.children.length;
       section.heading.textContent = `${section.title} (${size})`;
       section.root.hidden = size === 0;
     }
 
-    empty.hidden = confirmedSection.grid.children.length + freshSection.grid.children.length > 0;
+    empty.hidden = sections.some((section) => section.grid.children.length > 0);
   };
 
-  /** Moves the card to where its verdict says: «Підтверджені», «Нові», or out of both («ні»). */
-  const place = (card: Card) => {
-    card.element.remove();
+  /** Moves the item to where its verdict says: «Підтверджені», «Нові», or out of both («ні»). */
+  const place = (entry: Entry) => {
+    const view = entry.view;
 
-    const { verdict } = card.match;
-
-    if (verdict === 'yes') {
-      insertByDistance(confirmedSection.grid, card);
-    } else if (verdict === null) {
-      insertByDistance(freshSection.grid, card);
-    }
-
-    paintVerdict(card);
-    sync();
-  };
-
-  const onVerdict = (card: Card, pressed: 'yes' | 'no') => {
-    if (card.saving) {
+    if (!view) {
       return;
     }
 
-    const previous = card.match.verdict;
+    view.element.remove();
+
+    const { verdict, distance } = entry.match;
+
+    if (verdict === 'yes') {
+      insertByDistance(confirmedSection.grid, view.element, distance);
+    } else if (verdict === null) {
+      insertByDistance(freshSection.grid, view.element, distance);
+    }
+
+    paintView(entry);
+    sync();
+  };
+
+  // The one place a verdict is handled; cards and tiles only call it.
+  const onVerdict: VerdictHandler = (entry, pressed) => {
+    if (entry.saving) {
+      return;
+    }
+
+    const previous = entry.match.verdict;
     // Pressing the active one again clears the verdict.
     const next: Verdict = previous === pressed ? null : pressed;
 
-    card.error.hidden = true;
-    card.saving = true;
-    card.match.verdict = next;
-    place(card);
+    entry.failed = false;
+    entry.saving = true;
+    entry.match.verdict = next;
+    place(entry);
 
-    void postVerdict(immeyesUrl, card.match.id, next).then((saved) => {
-      card.saving = false;
+    void postVerdict(immeyesUrl, entry.match.id, next).then((saved) => {
+      entry.saving = false;
 
       if (saved) {
-        paintVerdict(card);
+        paintView(entry);
         void fetchCount(immeyesUrl, personId);
         return;
       }
 
-      card.match.verdict = previous;
-      card.error.textContent = 'Не вдалося зберегти вердикт';
-      card.error.hidden = false;
-      place(card);
+      entry.match.verdict = previous;
+      entry.failed = true;
+      place(entry);
     });
   };
 
-  for (const [matches, section] of [
-    [confirmed, confirmedSection],
-    [fresh, freshSection],
-  ] as const) {
-    for (const match of matches) {
-      insertByDistance(section.grid, createCard(match, onVerdict));
+  /** Builds the items of the current mode from the entries (the lists, verdicts and errors stay as they are). */
+  const render = () => {
+    for (const section of sections) {
+      section.grid.replaceChildren();
+      section.grid.classList.toggle('immich-ext-sources__grid--tiles', mode === 'tiles');
     }
-  }
 
-  sync();
+    for (const entry of entries) {
+      entry.view = (mode === 'tiles' ? createTile : createCard)(entry, onVerdict);
+      place(entry);
+    }
+
+    // `place` syncs per item; with no items at all it never runs.
+    sync();
+  };
+
+  render();
 
   const footer = element('p', 'immich-ext-sources__footer');
   const all = createLink(
@@ -546,7 +685,15 @@ function popupBody(immeyesUrl: string, personId: string, confirmed: Match[], fre
   all.textContent = 'усі збіги в Immeyes';
   footer.appendChild(all);
 
-  return [confirmedSection.root, freshSection.root, empty, footer];
+  return {
+    nodes: [confirmedSection.root, freshSection.root, empty, footer],
+    setMode: (next) => {
+      if (next !== mode) {
+        mode = next;
+        render();
+      }
+    },
+  };
 }
 
 let removeKeyListener: (() => void) | null = null;
@@ -584,8 +731,46 @@ export function openOtherSourcesPopup(immeyesUrl: string, personId: string): voi
   closeButton.setAttribute('aria-label', 'Закрити');
   closeButton.addEventListener('click', closeOtherSourcesPopup);
 
+  // «порівняння» / «плитка»: remembered between openings; applies to the lists as soon as they are there.
+  let mode = loadMode();
+  let lists: Lists | null = null;
+
+  const modeSwitch = element('div', 'immich-ext-sources__modes');
+  modeSwitch.setAttribute('role', 'group');
+  modeSwitch.setAttribute('aria-label', 'Вигляд');
+
+  const modeButtons = MODES.map(({ mode: value, label }) => {
+    const button = element('button', 'immich-ext-sources__mode', label);
+    button.type = 'button';
+    button.dataset.mode = value;
+    button.addEventListener('click', () => {
+      if (value === mode) {
+        return;
+      }
+
+      mode = value;
+      saveMode(value);
+      paintModes();
+      lists?.setMode(value);
+      // The layout is a different one: start from the top rather than at some arbitrary place of it.
+      panel.scrollTop = 0;
+    });
+    return button;
+  });
+
+  const paintModes = () => {
+    for (const button of modeButtons) {
+      const active = button.dataset.mode === mode;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+  };
+
+  paintModes();
+  modeSwitch.append(...modeButtons);
+
   const header = element('div', 'immich-ext-person-card-modal__header');
-  header.append(title, closeButton);
+  header.append(title, modeSwitch, closeButton);
 
   const body = element('div', 'immich-ext-person-card-modal__body');
   body.appendChild(element('p', 'immich-ext-sources__status', 'Рахую…'));
@@ -619,14 +804,14 @@ export function openOtherSourcesPopup(immeyesUrl: string, personId: string): voi
     if (confirmed && fresh) {
       // A verdict saved between the two requests could put a match in both: the confirmed one wins.
       const ids = new Set(confirmed.map((match) => match.id));
-      body.replaceChildren(
-        ...popupBody(
-          immeyesUrl,
-          personId,
-          confirmed,
-          fresh.filter((match) => !ids.has(match.id)),
-        ),
+      lists = createLists(
+        immeyesUrl,
+        personId,
+        confirmed,
+        fresh.filter((match) => !ids.has(match.id)),
+        mode,
       );
+      body.replaceChildren(...lists.nodes);
     } else {
       body.replaceChildren(element('p', 'immich-ext-sources__status', 'Immeyes недоступний'));
     }
