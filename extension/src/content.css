@@ -719,3 +719,204 @@ section.immich-ext-person-card-row > button:first-of-type {
   text-underline-offset: 2px;
   cursor: pointer;
 }
+
+/* «В інших джерелах» on the person page: the button (muted when there are no matches) and the popup.
+   Overlay, panel and theme tokens are the person card modal's; the panel is wide for the picture pairs. */
+.immich-ext-sources__trigger.is-empty {
+  opacity: 0.55;
+}
+
+.immich-ext-sources__panel {
+  width: min(100%, 52rem);
+  max-height: 90vh;
+}
+
+.immich-ext-sources__status,
+.immich-ext-sources__empty {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--ipp-text-muted);
+}
+
+.immich-ext-sources__section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.immich-ext-sources__section[hidden],
+.immich-ext-sources__empty[hidden],
+.immich-ext-sources__error[hidden] {
+  display: none;
+}
+
+.immich-ext-sources__heading {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ipp-text-muted);
+}
+
+.immich-ext-sources__grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
+@media (max-width: 700px) {
+  .immich-ext-sources__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.immich-ext-sources__card {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+  padding: 0.375rem;
+  border: 1px solid var(--ipp-border);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.immich-ext-sources__pictures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem;
+}
+
+/* A square slot (a size container, so the picture can be limited by `cqw` / `cqh`: a percentage
+   `max-height` would not resolve against the shrink-wrapped frame). The picture sits in the middle at
+   its natural aspect; the frame around it is exactly as big as the picture, which is what makes the
+   percentages of the face box exact. */
+.immich-ext-sources__slot {
+  display: grid;
+  place-items: center;
+  container-type: size;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 0.25rem;
+  background: var(--ipp-bg-muted);
+}
+
+.immich-ext-sources__frame {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+.immich-ext-sources__image {
+  display: block;
+  max-width: 100cqw;
+  max-height: 100cqh;
+}
+
+.immich-ext-sources__box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #facc15;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.55);
+  pointer-events: none;
+}
+
+.immich-ext-sources__meta {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+  color: var(--ipp-text-muted);
+}
+
+.immich-ext-sources__distance {
+  color: var(--ipp-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.immich-ext-sources__source-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.immich-ext-sources__owner {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  text-decoration: none;
+}
+
+.immich-ext-sources__owner:hover,
+.immich-ext-sources__all:hover {
+  color: var(--ipp-primary);
+  text-decoration: underline;
+}
+
+.immich-ext-sources__source {
+  flex-shrink: 0;
+  padding: 0 0.25rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+  font-size: 0.6875rem;
+  opacity: 0.7;
+}
+
+.immich-ext-sources__verdicts {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.immich-ext-sources__verdict {
+  flex: 1;
+  border: 1px solid var(--ipp-border);
+  border-radius: 0.375rem;
+  background: var(--ipp-bg-muted);
+  color: var(--ipp-text);
+  padding: 0.125rem 0.5rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.immich-ext-sources__verdict:hover:not(:disabled) {
+  border-color: var(--ipp-primary);
+}
+
+.immich-ext-sources__verdict:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.immich-ext-sources__verdict.is-active {
+  color: #fff;
+  font-weight: 600;
+}
+
+.immich-ext-sources__verdict--yes.is-active {
+  border-color: #16a34a;
+  background: #16a34a;
+}
+
+.immich-ext-sources__verdict--no.is-active {
+  border-color: #dc2626;
+  background: #dc2626;
+}
+
+.immich-ext-sources__error {
+  margin: 0;
+  color: #dc2626;
+}
+
+.immich-ext-sources__footer {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.immich-ext-sources__all {
+  color: var(--ipp-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

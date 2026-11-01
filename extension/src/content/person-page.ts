@@ -6,6 +6,7 @@ import {
   getPersonIdFromPath,
   waitForPersonInfoSection,
 } from './person-card';
+import { closeOtherSourcesPopup } from './other-sources-popup';
 import { isExtensionContextValid, loadImmeyesUrl } from './storage';
 import { closeWhoShotPopup } from './who-shot-popup';
 
@@ -54,6 +55,7 @@ class PersonToolsController {
   dispose(): void {
     closePersonCardModal();
     closeWhoShotPopup();
+    closeOtherSourcesPopup();
     this.#tools.remove();
     this.#section.classList.remove(ROW_CLASS);
   }

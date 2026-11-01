@@ -75,7 +75,7 @@ When **Immeyes URL** is set in the options, the same row gets links that open in
 - **Схожі персони** → `<immeyes>/duplicates/person/<uuid>`
 - **Порівняти** → `<immeyes>/duplicates/compare/<uuid>`
 - **Мапа** → `<immeyes>/map?person=<uuid>`
-- **Хто знімав** — not a link but a button, see below.
+- **Хто знімав** and **В інших джерелах** — not links but buttons, see below.
 
 The list lives in `src/content/immeyes-links.ts`; adding a page is one entry there. Without an Immeyes URL nothing is shown, and the links do not need the Person API.
 
@@ -88,6 +88,17 @@ The list lives in `src/content/immeyes-links.ts`; adding a page is one entry the
 - **«→ Ім'я»** — a body, a fingerprint or a signature that Immeyes already links to a photographer by a rule gets a second, muted link right after its name: «→ Alex Studio» → `<immeyes>/photographers/<id>?person=<uuid>` (a private camera’s hover title says so: «Корпус прив'язано до приватної камери «…»», otherwise «…до фотографа «…»»; «Відбиток» and «Підпис» likewise). Rows with no rule look as before and the count stays at the right edge; when a row is tight it is the name that gets the ellipsis, not the mark. An Immeyes that does not send `photographer` on these rows (older versions) simply shows no mark.
 - **Приватні камери** and **Відбитки** — two more sections that appear only when there is something in them. **Приватні камери** (photographers Immeyes marks `private`: the person’s own camera rather than a photographer) sit right below **Фотографи**, which then lists only the real ones; a row is the same link to `<immeyes>/photographers/<id>?person=<uuid>`. **Відбитки** (cameras without a serial, see above) sit between **Корпуси** and **Підписи**: «SONY DSC-P200 · відбиток 0ce356debb63» → `<immeyes>/photographers?tab=fingerprints&open=<fingerprint>`. Older Immeyes without these fields simply shows neither.
 - **When** — the request is made only on the click (for a person with many photos it can take seconds; the popup shows «Рахую…» meanwhile and can be closed, reopening shares the running request). The answer is cached per person until the page is reloaded; a failure («Immeyes недоступний»: 503, network error, anything but a normal answer) is not, the next click asks again. The popup closes when you leave the person page.
+
+#### «В інших джерелах» button and popup
+
+Immeyes has a *Flickr probe*: it lists photos from chosen Flickr sources, runs them through face recognition and matches the faces against the people of the Immich library. A match is a Flickr face ↔ Immich person with a cosine distance (0 identical, 0.5 the usual cut) and a verdict you give in Immeyes («так» / «ні»). **В інших джерелах (N)** shows those matches on the person page (the name is general on purpose; every card carries a small **Flickr** label for its source). No credentials are sent; the maximum distance is fixed at 0.5.
+
+- **Button** — after **Хто знімав**, only if Immeyes has the Flickr feature. On page load one `GET <immeyes>/api/flickr/persons/<uuid>/count?max=0.5`; **N** = distinct Flickr photos that are confirmed or still without a verdict (`photos.confirmed + photos.new`), the hover title says «підтверджених X, нових Y, відхилених Z». With N = 0 the button stays but is muted and its title says «збігів немає». A 404 or a network error (an Immeyes without the Flickr feature, Immeyes down) means no button at all, and the other links are unaffected. The count is cached per person until the page is reloaded (a failure is not) and asked again after every saved verdict.
+- **Popup** — same overlay and panel as **Хто знімав** (**✕**, **Esc** or a click on the background close it). On open two requests, `GET …/matches?max=0.5&show=yes` and `…&show=new` (ordered by distance); **Рахую…** meanwhile, **Immeyes недоступний** if either fails (the lists are not cached: every open asks again). Two sections, **Підтверджені (N)** and **Нові (N)** (a section is hidden when empty, «немає» when both are), as a grid of cards: 3 per row, 2 under 700 px. N here counts cards (faces), so it can be larger than the number on the button when one Flickr photo matched several faces.
+- **Card** — two square pictures side by side: the Flickr picture (`thumbUrl`, hotlinked from Flickr without a referrer, opens the Flickr page in a new tab) and the library photo (Immich’s own `/api/assets/<id>/thumbnail?size=thumbnail`, opens `/photos/<id>` in Immich in the same tab). Each is drawn at its own aspect ratio inside the square, with the matched face outlined in yellow (`face` on the Flickr picture, `asset.box` on the library one; no outline when Immeyes has no box). Under them: «відстань 0,374», the date taken (Flickr’s wall-clock time, shown as it is, not shifted to your time zone; omitted when unknown), the owner (`ownerName`, else `pathAlias`, else the Flickr id) linking to `https://www.flickr.com/photos/<owner>/` in a new tab, and a small **Flickr** label.
+- **Verdicts** — **так** / **ні** under each card, the active one highlighted, pressing it again clears the verdict. It is saved at once with `POST <immeyes>/api/flickr/matches/<id>/verdict` (`{"verdict":"yes"|"no"|null}`): **так** in **Нові** moves the card to **Підтверджені**, **ні** removes it from both lists (it stays in Immeyes under rejected), clearing a confirmed card moves it back to **Нові**; the headings and the button follow. If the save fails the card goes back where it was and «Не вдалося зберегти вердикт» appears under it. A row Immeyes sends malformed (no picture address, no face box…) is left out instead of failing the popup.
+- **Footer** — «усі збіги в Immeyes» → `<immeyes>/flickr?person=<uuid>` in a new tab. The popup closes when you leave the person page.
+- **Needs** — Immeyes must answer `/api/flickr/*` with CORS for the address you open Immich at, including the `POST` and its preflight (`Content-Type: application/json`), and the browser must be able to load the Flickr pictures (`https://live.staticflickr.com/…`) directly.
 
 ### Photographer in the photo info panel — optional (needs Immeyes)
 
@@ -111,7 +122,7 @@ Open `chrome://extensions` → Immich People Plus → **Details** → **Extensio
 - API key (`X-API-Key`)
 - Immeyes URL (optional, e.g. `http://immich-host:2284`)
 
-Every integration is optional: the people sort, folder filter and the `/photos` age filter (with birth dates set in Immich) work with no settings at all; Person API adds the person card, tags, the birth-date fallback and ages in the photo info panel; the Immeyes URL adds the links and the photographer block.
+Every integration is optional: the people sort, folder filter and the `/photos` age filter (with birth dates set in Immich) work with no settings at all; Person API adds the person card, tags, the birth-date fallback and ages in the photo info panel; the Immeyes URL adds the links, the **Хто знімав** and **В інших джерелах** popups and the photographer block.
 
 Chrome 111 or newer is required (the age filter’s page script uses `"world": "MAIN"`).
 
@@ -194,10 +205,16 @@ The extension has no automated tests in the repository; after a change, run thro
     - **✕**, **Esc** and a click on the dark background each close it; click again: it opens at once from cache (no new request); the person page behind does not react to Esc or the clicks;
     - Immeyes stopped (`docker stop`) or the URL wrong: «Immeyes недоступний»; start it again and click once more — it loads (a failure is not cached);
     - go to another person while it is open: it closes; clear **Immeyes URL** (new tab): no **Хто знімав**.
+19. With **Immeyes URL** set and the Flickr probe filled in Immeyes (matches for this person), open the person page in a fresh tab. After **Хто знімав** there is **В інших джерелах (N)** (check DevTools → Network: one `…/api/flickr/persons/<uuid>/count?max=0.5`, no list requests before the click), hover says «підтверджених X, нових Y, відхилених Z». Click it: **Рахую…**, then **Підтверджені (N)** and **Нові (N)** with cards. Check that:
+    - each card has the Flickr picture and the library photo side by side, the matched face outlined on both (the outline sits on the face, also on portrait pictures), «відстань 0,xxx», the date, the owner and **Flickr**; the Flickr picture opens the Flickr page in a new tab, the library one `/photos/<id>` in the same tab, the owner `https://www.flickr.com/photos/<owner>/`; 3 cards per row, 2 when the window is narrower than 700 px;
+    - **так** on a card in **Нові** moves it to **Підтверджені** (headings and the button’s N follow; the hover title changes), **ні** removes it, pressing the active **так** on a confirmed card sends it back to **Нові**; reload the person page and open the popup: the verdicts are kept, and `<immeyes>/flickr?person=<uuid>` («усі збіги в Immeyes») shows the same ones; stop Immeyes, press **так**: the card goes back and «Не вдалося зберегти вердикт» appears under it;
+    - **✕**, **Esc** and a click on the dark background each close it; open it again: the lists are requested again;
+    - a person with no matches: the button is muted, «В інших джерелах (0)», hover «збігів немає», the popup says «немає»; an Immeyes without the Flickr feature (the count answers 404) or one that is down: no **В інших джерелах** button at all, the other links stay; Immeyes stopped after the page loaded: «Immeyes недоступний»;
+    - go to another person while it is open: it closes, and the new person gets its own count; clear **Immeyes URL** (new tab): no button.
 
 **General**
 
-19. Clear all options: people sort, folder filter and the age filter (Immich birth dates) still work; no console errors from the extension.
+20. Clear all options: people sort, folder filter and the age filter (Immich birth dates) still work; no console errors from the extension.
 
 ## Project layout
 
@@ -216,6 +233,7 @@ extension/
     person-page.ts         /people/<id>: tools row (person card, Immeyes links)
     immeyes-links.ts       Link list for the Immeyes service
     who-shot-popup.ts      «Хто знімав» popup (photographers, private cameras, bodies, fingerprints, signatures)
+    other-sources-popup.ts «В інших джерелах» button and popup (Flickr matches of a person, verdicts)
     person-card.ts         Person card modal (Person API)
     storage.ts             Extension storage (settings, saved filters)
   src/page/                Page-world script (document_start): filters Immich's timeline API

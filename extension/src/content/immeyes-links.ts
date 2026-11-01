@@ -1,3 +1,4 @@
+import { mountOtherSourcesButton } from './other-sources-popup';
 import { openWhoShotPopup } from './who-shot-popup';
 
 export type ImmeyesLink = {
@@ -65,6 +66,8 @@ export function createImmeyesLinks(immeyesUrl: string, personId: string): HTMLEl
   }
 
   root.appendChild(createWhoShotButton(immeyesUrl, personId));
+  // «В інших джерелах»: added after «Хто знімав» once Immeyes answers the count (and only if it has the feature).
+  mountOtherSourcesButton(root, immeyesUrl, personId);
 
   return root;
 }
