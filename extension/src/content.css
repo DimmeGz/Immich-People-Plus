@@ -911,8 +911,95 @@ section.immich-ext-person-card-row > button:first-of-type {
 }
 
 .immich-ext-sources__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
   margin: 0;
   font-size: 0.875rem;
+}
+
+/* «показано 12 з 31»: only while the filter hides some. */
+.immich-ext-sources__shown {
+  color: var(--ipp-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Filter above the sections: platform chips with counts, then the «джерело» select. */
+.immich-ext-sources__filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.immich-ext-sources__filter[hidden],
+.immich-ext-sources__platforms[hidden],
+.immich-ext-sources__pick[hidden] {
+  display: none;
+}
+
+.immich-ext-sources__platforms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.immich-ext-sources__chip {
+  border: 1px solid var(--ipp-border);
+  border-radius: 999px;
+  background: var(--ipp-bg-muted);
+  color: var(--ipp-text);
+  padding: 0.125rem 0.625rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.immich-ext-sources__chip-count {
+  color: var(--ipp-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.immich-ext-sources__chip:hover:not(:disabled):not(.is-active) {
+  color: var(--ipp-primary);
+}
+
+.immich-ext-sources__chip.is-active {
+  border-color: var(--ipp-primary);
+  background: var(--ipp-primary-bg);
+  color: var(--ipp-primary);
+  font-weight: 600;
+  cursor: default;
+}
+
+.immich-ext-sources__chip.is-active .immich-ext-sources__chip-count {
+  color: inherit;
+}
+
+.immich-ext-sources__chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.immich-ext-sources__pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--ipp-text-muted);
+}
+
+.immich-ext-sources__select {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--ipp-border);
+  border-radius: 0.5rem;
+  background: var(--ipp-bg-muted);
+  color: var(--ipp-text);
+  padding: 0.1875rem 0.5rem;
+  font: inherit;
+  font-size: 0.8125rem;
 }
 
 .immich-ext-sources__all {

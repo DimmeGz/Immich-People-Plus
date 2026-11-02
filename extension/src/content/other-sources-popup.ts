@@ -1,7 +1,7 @@
 /**
  * "В інших джерелах" on the person page: where else this person was recognised, from Immeyes'
- * external-source probe (a face from Flickr or a Telegram channel matched against the library's people,
- * with a cosine distance).
+ * external-source probe (a face from Flickr, a Telegram channel or a website matched against the library's
+ * people, with a cosine distance).
  *
  * - The button is mounted next to the Immeyes links once `GET <Immeyes URL>/api/flickr/persons/<id>/count`
  *   answers; an Immeyes without the Flickr feature (404, network error) gets no button at all.
@@ -15,6 +15,7 @@ const TITLE_ID = 'immich-ext-sources-title';
 /** The usual cut for "same person"; fixed, the popup has no control for it. */
 const MAX_DISTANCE = 0.5;
 const MODE_STORAGE_KEY = 'immich-people-plus.sources-mode';
+const FILTER_STORAGE_KEY = 'immich-people-plus.sources-filter';
 const COUNT_TIMEOUT_MS = 30_000;
 const LIST_TIMEOUT_MS = 60_000;
 const VERDICT_TIMEOUT_MS = 15_000;
@@ -24,13 +25,23 @@ type Verdict = 'yes' | 'no' | null;
 type Box = { x1: number; y1: number; x2: number; y2: number };
 
 type Tally = { confirmed: number; new: number; rejected: number };
-/** `photos`: distinct photos (Flickr or Telegram), `matches`: faces. */
+/** `photos`: distinct photos (of any source), `matches`: faces. */
 type Count = { photos: Tally; matches: Tally };
 
-/** Where a photo comes from; Immeyes' rows without the field are Flickr's (older Immeyes). */
-type Source = 'flickr' | 'telegram';
+/** Where a photo comes from: Flickr, a Telegram channel, a website. Rows without the field are Flickr's (older Immeyes). */
+type Source = 'flickr' | 'telegram' | 'site';
 
-const SOURCE_LABELS: Record<Source, string> = { flickr: 'Flickr', telegram: 'Telegram' };
+const SOURCE_LABELS: Record<Source, string> = { flickr: 'Flickr', telegram: 'Telegram', site: 'Сайт' };
+
+/** Hover text of the owner link, per source. */
+const OWNER_TITLES: Record<Source, string> = {
+  flickr: 'Фотопотік автора на Flickr',
+  telegram: 'Канал автора в Telegram',
+  site: 'Сайт автора',
+};
+
+/** What a website's `ownerName` has to look like (its host) to be linked as `https://<host>/`. */
+const HOST_NAME = /^[a-z0-9.-]+\.[a-z]{2,}$/i;
 
 type Match = {
   id: number;
@@ -46,6 +57,9 @@ type Match = {
     pageUrl: string;
     /** Absolute: a path on Immeyes (a Telegram thumbnail) is already joined to the Immeyes URL. */
     thumbUrl: string;
+    /** The Immeyes source (a Flickr user, a channel, a site) the photo was found by; null: deleted, or an older Immeyes. */
+    sourceId: number | null;
+    sourceName: string | null;
   };
   face: Box;
   asset: { id: string; box: Box | null };
@@ -80,8 +94,9 @@ function asHttpUrl(value: unknown): string | null {
 }
 
 /**
- * A picture address: absolute `http(s)`, or a path on Immeyes itself (`/api/flickr/thumb/<id>`, a Telegram
- * thumbnail), which becomes `<Immeyes URL><path>`. `//host/…` is not a path on Immeyes and is refused.
+ * A picture address: absolute `http(s)`, or a path on Immeyes itself (`/api/flickr/thumb/<id>`, the thumbnail
+ * of a Telegram or website photo), which becomes `<Immeyes URL><path>`. `//host/…` is not a path on Immeyes
+ * and is refused.
  */
 function asImageUrl(value: unknown, immeyesUrl: string): string | null {
   const text = asString(value);
@@ -93,19 +108,32 @@ function asImageUrl(value: unknown, immeyesUrl: string): string | null {
   return asHttpUrl(text);
 }
 
-function asSource(value: unknown): Source | null {
-  if (value === undefined || value === null) {
-    return 'flickr';
-  }
-
-  // A source this popup does not know cannot be linked to its owner properly: leave the row out.
-  return value === 'flickr' || value === 'telegram' ? value : null;
+/** A missing or unknown value is Flickr, the source every Immeyes has. */
+function asSource(value: unknown): Source {
+  return value === 'telegram' || value === 'site' ? value : 'flickr';
 }
 
-/** The owner's page: a Flickr photostream, a Telegram channel by its username; none for a private channel. */
-function ownerPageUrl(source: Source, owner: string, pathAlias: string | null): string | null {
+/** The id of an Immeyes source: an integer, anything else (a string, a fraction, absent) is "none". */
+function asSourceId(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) ? value : null;
+}
+
+/**
+ * The owner's page: a Flickr photostream, a Telegram channel by its username (none for a private one),
+ * a website by its host (the `ownerName`, when it looks like one).
+ */
+function ownerPageUrl(
+  source: Source,
+  owner: string,
+  ownerName: string | null,
+  pathAlias: string | null,
+): string | null {
   if (source === 'telegram') {
     return pathAlias ? `https://t.me/${encodeURIComponent(pathAlias)}` : null;
+  }
+
+  if (source === 'site') {
+    return ownerName && HOST_NAME.test(ownerName) ? `https://${ownerName}/` : null;
   }
 
   return `https://www.flickr.com/photos/${encodeURIComponent(owner).replace(/%40/g, '@')}/`;
@@ -154,6 +182,8 @@ function parseMatch(value: unknown, verdict: Verdict, immeyesUrl: string): Match
   const distance = raw?.distance;
   const source = asSource(photo?.source);
   const owner = asString(photo?.owner);
+  const ownerName = asString(photo?.ownerName);
+  const pathAlias = asString(photo?.pathAlias);
   const pageUrl = asHttpUrl(photo?.pageUrl);
   const thumbUrl = asImageUrl(photo?.thumbUrl, immeyesUrl);
   const face = asBox(raw?.face);
@@ -164,7 +194,6 @@ function parseMatch(value: unknown, verdict: Verdict, immeyesUrl: string): Match
     !Number.isSafeInteger(id) ||
     typeof distance !== 'number' ||
     !Number.isFinite(distance) ||
-    !source ||
     !owner ||
     !pageUrl ||
     !thumbUrl ||
@@ -181,11 +210,13 @@ function parseMatch(value: unknown, verdict: Verdict, immeyesUrl: string): Match
     verdict,
     photo: {
       source,
-      ownerLabel: asString(photo?.ownerName) ?? asString(photo?.pathAlias) ?? owner,
-      ownerUrl: ownerPageUrl(source, owner, asString(photo?.pathAlias)),
+      ownerLabel: ownerName ?? pathAlias ?? owner,
+      ownerUrl: ownerPageUrl(source, owner, ownerName, pathAlias),
       takenAt: asDate(photo?.takenAt),
       pageUrl,
       thumbUrl,
+      sourceId: asSourceId(photo?.sourceId),
+      sourceName: asString(photo?.sourceName)?.trim() ?? null,
     },
     face,
     asset: { id: assetId, box: asBox(asset?.box) },
@@ -446,6 +477,113 @@ function saveMode(mode: Mode): void {
   }
 }
 
+/** `all` or one platform; the chips' choice. */
+type Platform = Source | 'all';
+/** The «джерело» choice: every source, the rows with no source (`other`), or one Immeyes source by its id. */
+type SourceChoice = 'all' | 'other' | number;
+type Filter = { platform: Platform; source: SourceChoice };
+
+/** The chips, in order. «Сайти» is plural here, the single «Сайт» is a card's label. */
+const PLATFORMS: readonly { platform: Platform; label: string }[] = [
+  { platform: 'all', label: 'Усі' },
+  { platform: 'flickr', label: 'Flickr' },
+  { platform: 'telegram', label: 'Telegram' },
+  { platform: 'site', label: 'Сайти' },
+];
+
+const NO_FILTER: Filter = { platform: 'all', source: 'all' };
+
+function asPlatform(value: unknown): Platform {
+  return PLATFORMS.find((item) => item.platform === value)?.platform ?? 'all';
+}
+
+/** Kept like the mode; anything unreadable is «Усі» / «усі джерела». */
+function loadFilter(): Filter {
+  try {
+    const raw = asRecord(JSON.parse(localStorage.getItem(FILTER_STORAGE_KEY) ?? 'null'));
+    return {
+      platform: asPlatform(raw?.platform),
+      source: raw?.source === 'other' ? 'other' : (asSourceId(raw?.source) ?? 'all'),
+    };
+  } catch {
+    return NO_FILTER;
+  }
+}
+
+function saveFilter(filter: Filter): void {
+  try {
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filter));
+  } catch {
+    // storage blocked: the choice just lasts until the popup is closed
+  }
+}
+
+/** How many of `matches` each platform has (`all`: every one). */
+function platformCounts(matches: readonly Match[]): Record<Platform, number> {
+  const counts: Record<Platform, number> = { all: matches.length, flickr: 0, telegram: 0, site: 0 };
+
+  for (const { photo } of matches) {
+    counts[photo.source] += 1;
+  }
+
+  return counts;
+}
+
+/** One Immeyes source among the rows, or the rows that have none (`other`, shown as «інше»). */
+type SourceGroup = { choice: 'other' | number; name: string; count: number };
+
+/**
+ * The sources of `platform`'s rows, most rows first, «інше» (rows with no source id) last. The name is the
+ * first one a row of the source carries; a source whose rows have none is called by its number.
+ */
+function sourceGroups(matches: readonly Match[], platform: Platform): SourceGroup[] {
+  const groups = new Map<number | 'other', { name: string | null; count: number }>();
+
+  for (const { photo } of matches) {
+    if (platform === 'all' || photo.source === platform) {
+      const key = photo.sourceId ?? 'other';
+      const group = groups.get(key) ?? { name: null, count: 0 };
+      group.name ??= photo.sourceId === null ? null : photo.sourceName;
+      group.count += 1;
+      groups.set(key, group);
+    }
+  }
+
+  const rank = (group: SourceGroup) => (group.choice === 'other' ? 1 : 0);
+  return [...groups]
+    .map(([choice, { name, count }]) => ({
+      choice,
+      name: choice === 'other' ? 'інше' : (name ?? `#${choice}`),
+      count,
+    }))
+    .sort((a, b) => rank(a) - rank(b) || b.count - a.count || a.name.localeCompare(b.name, 'uk'));
+}
+
+/**
+ * What the saved choice means for these rows: a platform with no rows is «Усі» (and then its source goes
+ * with it), a source that is not among the platform's sources (or the only one there) is «усі джерела».
+ * The saved choice itself is left alone.
+ */
+function resolveFilter(saved: Filter, matches: readonly Match[]): Filter {
+  const platform = platformCounts(matches)[saved.platform] > 0 ? saved.platform : 'all';
+  const groups = sourceGroups(matches, platform);
+  const known =
+    platform === saved.platform && groups.length > 1 && groups.some((group) => group.choice === saved.source);
+  return { platform, source: known ? saved.source : 'all' };
+}
+
+function passesFilter({ photo }: Match, filter: Filter): boolean {
+  if (filter.platform !== 'all' && photo.source !== filter.platform) {
+    return false;
+  }
+
+  if (filter.source === 'all') {
+    return true;
+  }
+
+  return filter.source === 'other' ? photo.sourceId === null : photo.sourceId === filter.source;
+}
+
 /**
  * One match as the lists hold it, whatever the mode: the verdict handling works on this, a view only
  * shows it (and is thrown away and made again when the mode changes).
@@ -493,7 +631,7 @@ function createErrorLine(): HTMLElement {
   return error;
 }
 
-/** «порівняння»: the external picture (Flickr, Telegram) and the library photo side by side, the facts under them. */
+/** «порівняння»: the external picture (Flickr, Telegram, a site) and the library photo side by side, the facts under them. */
 function createCard(entry: Entry, onVerdict: VerdictHandler): View {
   const { match } = entry;
   const { photo, asset } = match;
@@ -527,7 +665,7 @@ function createCard(entry: Entry, onVerdict: VerdictHandler): View {
   owner.textContent = photo.ownerLabel;
 
   if (photo.ownerUrl) {
-    owner.title = photo.source === 'telegram' ? 'Канал автора в Telegram' : 'Фотопотік автора на Flickr';
+    owner.title = OWNER_TITLES[photo.source];
   }
 
   source.append(owner, element('span', 'immich-ext-sources__source', SOURCE_LABELS[photo.source]));
@@ -541,7 +679,7 @@ function createCard(entry: Entry, onVerdict: VerdictHandler): View {
 }
 
 /**
- * «плитка»: only the external picture, cropped to a square tile that links to its page (Flickr, Telegram); the
+ * «плитка»: only the external picture, cropped to a square tile that links to its page (Flickr, Telegram, a site); the
  * verdict bar slides over the bottom edge on hover or focus, the error line is under the tile.
  */
 function createTile(entry: Entry, onVerdict: VerdictHandler): View {
@@ -624,6 +762,93 @@ function insertByDistance(grid: HTMLElement, item: HTMLElement, distance: number
   grid.insertBefore(item, before);
 }
 
+type FilterBar = {
+  root: HTMLElement;
+  /** Shows the counts of `matches` (the loaded, not rejected ones) and the choice `filter` that applies to them. */
+  paint: (matches: readonly Match[], filter: Filter) => void;
+};
+
+function createOption(value: string, text: string): HTMLOptionElement {
+  const option = element('option', '', text);
+  option.value = value;
+  return option;
+}
+
+function parseSourceChoice(value: string): SourceChoice {
+  return value === 'all' || value === 'other' ? value : Number(value);
+}
+
+/**
+ * Platform chips («Усі · Flickr · Telegram · Сайти», each with its count) and the «джерело» select. Each part
+ * hides itself when there is nothing to choose from: the chips with fewer than two platforms, the select
+ * with fewer than two sources in the chosen platform.
+ */
+function createFilterBar(onChoose: (filter: Filter) => void): FilterBar {
+  const root = element('div', 'immich-ext-sources__filter');
+
+  const platforms = element('div', 'immich-ext-sources__platforms');
+  platforms.setAttribute('role', 'group');
+  platforms.setAttribute('aria-label', 'Платформа');
+
+  const chips = PLATFORMS.map(({ platform, label }) => {
+    const button = element('button', 'immich-ext-sources__chip');
+    const count = element('span', 'immich-ext-sources__chip-count');
+    button.type = 'button';
+    button.dataset.platform = platform;
+    button.append(label, ' ', count);
+    button.addEventListener('click', () => onChoose({ platform, source: 'all' }));
+    return { platform, button, count };
+  });
+
+  platforms.append(...chips.map(({ button }) => button));
+
+  const pick = element('label', 'immich-ext-sources__pick');
+  const select = element('select', 'immich-ext-sources__select');
+  pick.append(element('span', 'immich-ext-sources__pick-label', 'джерело'), select);
+
+  let platform: Platform = 'all';
+  let options = '';
+  select.addEventListener('change', () => onChoose({ platform, source: parseSourceChoice(select.value) }));
+
+  root.append(platforms, pick);
+
+  return {
+    root,
+    paint: (matches, filter) => {
+      const counts = platformCounts(matches);
+      const groups = sourceGroups(matches, filter.platform);
+      const severalPlatforms = chips.filter((chip) => chip.platform !== 'all' && counts[chip.platform] > 0).length > 1;
+      const severalSources = groups.length > 1;
+      platform = filter.platform;
+
+      for (const chip of chips) {
+        const active = chip.platform === filter.platform;
+        chip.count.textContent = String(counts[chip.platform]);
+        chip.button.disabled = counts[chip.platform] === 0;
+        chip.button.classList.toggle('is-empty', counts[chip.platform] === 0);
+        chip.button.classList.toggle('is-active', active);
+        chip.button.setAttribute('aria-pressed', String(active));
+      }
+
+      // The options are made again only when they changed, so an open list is not closed under the user's hand.
+      const next = JSON.stringify(groups);
+
+      if (severalSources && next !== options) {
+        options = next;
+        select.replaceChildren(
+          createOption('all', 'усі джерела'),
+          ...groups.map((group) => createOption(String(group.choice), `${group.name} · ${group.count}`)),
+        );
+      }
+
+      select.value = String(filter.source);
+      platforms.hidden = !severalPlatforms;
+      pick.hidden = !severalSources;
+      root.hidden = !severalPlatforms && !severalSources;
+    },
+  };
+}
+
 type Lists = { nodes: HTMLElement[]; setMode: (mode: Mode) => void };
 
 function createLists(
@@ -641,37 +866,69 @@ function createLists(
     .sort((a, b) => a.distance - b.distance)
     .map((match) => ({ match, saving: false, failed: false, view: null }));
   let mode = initialMode;
+  // The choice as the user left it; what applies to the rows at hand is `resolveFilter` of it.
+  let chosen = loadFilter();
 
-  const sync = () => {
+  const filterBar = createFilterBar((next) => {
+    chosen = next;
+    saveFilter(next);
+    refresh();
+  });
+  const shown = element('span', 'immich-ext-sources__shown');
+
+  /** Where the item of an entry belongs: «Підтверджені», «Нові», or nowhere («ні», or filtered out). */
+  const gridOf = ({ match }: Entry, filter: Filter): HTMLElement | null => {
+    if (!passesFilter(match, filter)) {
+      return null;
+    }
+
+    return match.verdict === 'yes' ? confirmedSection.grid : match.verdict === null ? freshSection.grid : null;
+  };
+
+  /** Takes the entry's item out of wherever it is and puts it into `grid` among the others by distance. */
+  const place = (entry: Entry, grid: HTMLElement | null) => {
+    entry.view?.element.remove();
+
+    if (!grid) {
+      return;
+    }
+
+    // Items are made when first needed: a filtered-out entry costs no picture request.
+    entry.view ??= (mode === 'tiles' ? createTile : createCard)(entry, onVerdict);
+    insertByDistance(grid, entry.view.element, entry.match.distance);
+    paintView(entry);
+  };
+
+  /**
+   * Brings everything in line with the entries and the filter: the bar's counts and choices, which items
+   * are shown and where, the headings, the footer. Called after anything that changes one of them.
+   */
+  const refresh = () => {
+    // A match rejected with «ні» is out of every count, as it is out of both lists.
+    const loaded = entries.filter(({ match }) => match.verdict !== 'no').map(({ match }) => match);
+    const filter = resolveFilter(chosen, loaded);
+    filterBar.paint(loaded, filter);
+
+    let visible = 0;
+
+    for (const entry of entries) {
+      const grid = gridOf(entry, filter);
+      visible += grid ? 1 : 0;
+
+      if ((entry.view?.element.parentElement ?? null) !== grid) {
+        place(entry, grid);
+      }
+    }
+
     for (const section of sections) {
       const size = section.grid.children.length;
       section.heading.textContent = `${section.title} (${size})`;
       section.root.hidden = size === 0;
     }
 
-    empty.hidden = sections.some((section) => section.grid.children.length > 0);
-  };
-
-  /** Moves the item to where its verdict says: «Підтверджені», «Нові», or out of both («ні»). */
-  const place = (entry: Entry) => {
-    const view = entry.view;
-
-    if (!view) {
-      return;
-    }
-
-    view.element.remove();
-
-    const { verdict, distance } = entry.match;
-
-    if (verdict === 'yes') {
-      insertByDistance(confirmedSection.grid, view.element, distance);
-    } else if (verdict === null) {
-      insertByDistance(freshSection.grid, view.element, distance);
-    }
-
-    paintView(entry);
-    sync();
+    empty.hidden = visible > 0;
+    shown.hidden = visible === loaded.length;
+    shown.textContent = shown.hidden ? '' : `показано ${visible} з ${loaded.length}`;
   };
 
   // The one place a verdict is handled; cards and tiles only call it.
@@ -687,7 +944,8 @@ function createLists(
     entry.failed = false;
     entry.saving = true;
     entry.match.verdict = next;
-    place(entry);
+    refresh();
+    paintView(entry);
 
     void postVerdict(immeyesUrl, entry.match.id, next).then((saved) => {
       entry.saving = false;
@@ -700,7 +958,8 @@ function createLists(
 
       entry.match.verdict = previous;
       entry.failed = true;
-      place(entry);
+      refresh();
+      paintView(entry);
     });
   };
 
@@ -712,12 +971,10 @@ function createLists(
     }
 
     for (const entry of entries) {
-      entry.view = (mode === 'tiles' ? createTile : createCard)(entry, onVerdict);
-      place(entry);
+      entry.view = null;
     }
 
-    // `place` syncs per item; with no items at all it never runs.
-    sync();
+    refresh();
   };
 
   render();
@@ -729,10 +986,10 @@ function createLists(
     true,
   );
   all.textContent = 'усі збіги в Immeyes';
-  footer.appendChild(all);
+  footer.append(shown, all);
 
   return {
-    nodes: [confirmedSection.root, freshSection.root, empty, footer],
+    nodes: [filterBar.root, confirmedSection.root, freshSection.root, empty, footer],
     setMode: (next) => {
       if (next !== mode) {
         mode = next;
