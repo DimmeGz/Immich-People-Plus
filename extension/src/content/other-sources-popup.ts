@@ -1,6 +1,7 @@
 /**
  * "В інших джерелах" on the person page: where else this person was recognised, from Immeyes'
- * Flickr probe (a Flickr face matched against the library's people, with a cosine distance).
+ * external-source probe (a face from Flickr or a Telegram channel matched against the library's people,
+ * with a cosine distance).
  *
  * - The button is mounted next to the Immeyes links once `GET <Immeyes URL>/api/flickr/persons/<id>/count`
  *   answers; an Immeyes without the Flickr feature (404, network error) gets no button at all.
@@ -23,19 +24,27 @@ type Verdict = 'yes' | 'no' | null;
 type Box = { x1: number; y1: number; x2: number; y2: number };
 
 type Tally = { confirmed: number; new: number; rejected: number };
-/** `photos`: distinct Flickr photos, `matches`: faces. */
+/** `photos`: distinct photos (Flickr or Telegram), `matches`: faces. */
 type Count = { photos: Tally; matches: Tally };
+
+/** Where a photo comes from; Immeyes' rows without the field are Flickr's (older Immeyes). */
+type Source = 'flickr' | 'telegram';
+
+const SOURCE_LABELS: Record<Source, string> = { flickr: 'Flickr', telegram: 'Telegram' };
 
 type Match = {
   id: number;
   distance: number;
   verdict: Verdict;
   photo: {
-    owner: string;
+    source: Source;
     /** `ownerName ?? pathAlias ?? owner` */
     ownerLabel: string;
+    /** The owner's photostream / channel; null when there is none to open (a private Telegram channel). */
+    ownerUrl: string | null;
     takenAt: Date | null;
     pageUrl: string;
+    /** Absolute: a path on Immeyes (a Telegram thumbnail) is already joined to the Immeyes URL. */
     thumbUrl: string;
   };
   face: Box;
@@ -68,6 +77,38 @@ function asHttpUrl(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * A picture address: absolute `http(s)`, or a path on Immeyes itself (`/api/flickr/thumb/<id>`, a Telegram
+ * thumbnail), which becomes `<Immeyes URL><path>`. `//host/…` is not a path on Immeyes and is refused.
+ */
+function asImageUrl(value: unknown, immeyesUrl: string): string | null {
+  const text = asString(value);
+
+  if (text && text.startsWith('/') && !text.startsWith('//') && !text.startsWith('/\\')) {
+    return asHttpUrl(`${immeyesUrl.replace(/\/+$/, '')}${text}`);
+  }
+
+  return asHttpUrl(text);
+}
+
+function asSource(value: unknown): Source | null {
+  if (value === undefined || value === null) {
+    return 'flickr';
+  }
+
+  // A source this popup does not know cannot be linked to its owner properly: leave the row out.
+  return value === 'flickr' || value === 'telegram' ? value : null;
+}
+
+/** The owner's page: a Flickr photostream, a Telegram channel by its username; none for a private channel. */
+function ownerPageUrl(source: Source, owner: string, pathAlias: string | null): string | null {
+  if (source === 'telegram') {
+    return pathAlias ? `https://t.me/${encodeURIComponent(pathAlias)}` : null;
+  }
+
+  return `https://www.flickr.com/photos/${encodeURIComponent(owner).replace(/%40/g, '@')}/`;
 }
 
 function asDate(value: unknown): Date | null {
@@ -104,16 +145,17 @@ function parseCount(value: unknown): Count | null {
   return { photos: asTally(raw.photos), matches: asTally(raw.matches) };
 }
 
-function parseMatch(value: unknown, verdict: Verdict): Match | null {
+function parseMatch(value: unknown, verdict: Verdict, immeyesUrl: string): Match | null {
   const raw = asRecord(value);
   const photo = asRecord(raw?.photo);
   const asset = asRecord(raw?.asset);
 
   const id = raw?.id;
   const distance = raw?.distance;
+  const source = asSource(photo?.source);
   const owner = asString(photo?.owner);
   const pageUrl = asHttpUrl(photo?.pageUrl);
-  const thumbUrl = asHttpUrl(photo?.thumbUrl);
+  const thumbUrl = asImageUrl(photo?.thumbUrl, immeyesUrl);
   const face = asBox(raw?.face);
   const assetId = asString(asset?.id);
 
@@ -122,6 +164,7 @@ function parseMatch(value: unknown, verdict: Verdict): Match | null {
     !Number.isSafeInteger(id) ||
     typeof distance !== 'number' ||
     !Number.isFinite(distance) ||
+    !source ||
     !owner ||
     !pageUrl ||
     !thumbUrl ||
@@ -137,8 +180,9 @@ function parseMatch(value: unknown, verdict: Verdict): Match | null {
     // The list a row came from decides its section, so a row that disagrees cannot land in the wrong one.
     verdict,
     photo: {
-      owner,
+      source,
       ownerLabel: asString(photo?.ownerName) ?? asString(photo?.pathAlias) ?? owner,
+      ownerUrl: ownerPageUrl(source, owner, asString(photo?.pathAlias)),
       takenAt: asDate(photo?.takenAt),
       pageUrl,
       thumbUrl,
@@ -149,12 +193,12 @@ function parseMatch(value: unknown, verdict: Verdict): Match | null {
 }
 
 /** Rows of a list; a malformed one is dropped instead of failing the popup. Not an array: no answer. */
-function parseMatches(value: unknown, verdict: Verdict): Match[] | null {
+function parseMatches(value: unknown, verdict: Verdict, immeyesUrl: string): Match[] | null {
   if (!Array.isArray(value)) {
     return null;
   }
 
-  return value.flatMap((item) => parseMatch(item, verdict) ?? []);
+  return value.flatMap((item) => parseMatch(item, verdict, immeyesUrl) ?? []);
 }
 
 async function getJson(url: string, timeoutMs: number): Promise<unknown> {
@@ -181,7 +225,7 @@ async function requestMatches(
   show: 'yes' | 'new',
 ): Promise<Match[] | null> {
   const url = `${personUrl(immeyesUrl, personId)}/matches?max=${MAX_DISTANCE}&show=${show}`;
-  return parseMatches(await getJson(url, LIST_TIMEOUT_MS), show === 'yes' ? 'yes' : null);
+  return parseMatches(await getJson(url, LIST_TIMEOUT_MS), show === 'yes' ? 'yes' : null, immeyesUrl);
 }
 
 async function postVerdict(immeyesUrl: string, matchId: number, verdict: Verdict): Promise<boolean> {
@@ -378,10 +422,6 @@ function createPicture(href: string, newTab: boolean, src: string, alt: string, 
   return slot;
 }
 
-function photostreamUrl(owner: string): string {
-  return `https://www.flickr.com/photos/${encodeURIComponent(owner).replace(/%40/g, '@')}/`;
-}
-
 type Mode = 'compare' | 'tiles';
 
 const MODES: readonly { mode: Mode; label: string }[] = [
@@ -453,7 +493,7 @@ function createErrorLine(): HTMLElement {
   return error;
 }
 
-/** «порівняння»: the Flickr picture and the library photo side by side, the facts under them. */
+/** «порівняння»: the external picture (Flickr, Telegram) and the library photo side by side, the facts under them. */
 function createCard(entry: Entry, onVerdict: VerdictHandler): View {
   const { match } = entry;
   const { photo, asset } = match;
@@ -463,7 +503,7 @@ function createCard(entry: Entry, onVerdict: VerdictHandler): View {
 
   const pictures = element('div', 'immich-ext-sources__pictures');
   pictures.append(
-    createPicture(photo.pageUrl, true, photo.thumbUrl, 'Flickr', match.face),
+    createPicture(photo.pageUrl, true, photo.thumbUrl, SOURCE_LABELS[photo.source], match.face),
     createPicture(
       `/photos/${encodeURIComponent(asset.id)}`,
       false,
@@ -481,10 +521,16 @@ function createCard(entry: Entry, onVerdict: VerdictHandler): View {
   }
 
   const source = element('span', 'immich-ext-sources__source-line');
-  const owner = createLink('immich-ext-sources__owner', photostreamUrl(photo.owner), true);
+  const owner = photo.ownerUrl
+    ? createLink('immich-ext-sources__owner', photo.ownerUrl, true)
+    : element('span', 'immich-ext-sources__owner');
   owner.textContent = photo.ownerLabel;
-  owner.title = 'Фотопотік автора на Flickr';
-  source.append(owner, element('span', 'immich-ext-sources__source', 'Flickr'));
+
+  if (photo.ownerUrl) {
+    owner.title = photo.source === 'telegram' ? 'Канал автора в Telegram' : 'Фотопотік автора на Flickr';
+  }
+
+  source.append(owner, element('span', 'immich-ext-sources__source', SOURCE_LABELS[photo.source]));
   meta.appendChild(source);
 
   const { root: verdicts, yes, no } = createVerdictButtons(entry, onVerdict, 'immich-ext-sources__verdicts');
@@ -495,7 +541,7 @@ function createCard(entry: Entry, onVerdict: VerdictHandler): View {
 }
 
 /**
- * «плитка»: only the Flickr picture, cropped to a square tile that links to its Flickr page; the
+ * «плитка»: only the external picture, cropped to a square tile that links to its page (Flickr, Telegram); the
  * verdict bar slides over the bottom edge on hover or focus, the error line is under the tile.
  */
 function createTile(entry: Entry, onVerdict: VerdictHandler): View {
@@ -518,7 +564,7 @@ function createTile(entry: Entry, onVerdict: VerdictHandler): View {
   link.title = label;
   link.setAttribute('aria-label', label);
 
-  const image = createImage('Flickr', 'immich-ext-sources__tile-image');
+  const image = createImage(SOURCE_LABELS[photo.source], 'immich-ext-sources__tile-image');
   image.src = photo.thumbUrl;
   link.appendChild(image);
 
