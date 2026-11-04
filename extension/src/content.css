@@ -1017,6 +1017,19 @@ section.immich-ext-person-card-row > button:first-of-type {
   overflow: hidden;
 }
 
+/* «Обличчя» / «Копії» next to the title; the modes switch keeps the free space to its left. */
+.immich-ext-sources__modes.immich-ext-sources__views {
+  margin-inline-start: 0;
+}
+
+.immich-ext-sources__modes.immich-ext-sources__views[hidden] {
+  display: none;
+}
+
+.immich-ext-sources__panel .immich-ext-person-card-modal__header {
+  flex-wrap: wrap;
+}
+
 .immich-ext-sources__mode {
   border: none;
   background: var(--ipp-bg-muted);

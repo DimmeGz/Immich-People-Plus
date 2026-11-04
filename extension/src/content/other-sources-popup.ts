@@ -8,6 +8,10 @@
  * - The popup, opened by that button, lists confirmed and new matches
  *   (`.../matches?max=0.5&show=yes|new`) and saves the user's «так» / «ні» verdict at once. It has two
  *   display modes, «порівняння» (cards with both pictures) and «плитка» (Flickr tiles), over the same lists.
+ * - Next to the faces there are the copies: external photos that are near-duplicates of library photos with this
+ *   person on them (`.../copies?show=yes|new`). They are a second list in the same popup, switched by «Обличчя» /
+ *   «Копії» (the switch only exists when there is a copy), with the same cards, tiles, filters and verdicts.
+ *   An Immeyes without the copies feature answers no count for them and the popup is what it was.
  */
 
 const MODAL_SELECTOR = '[data-immich-people-plus="sources-modal"]';
@@ -25,8 +29,11 @@ type Verdict = 'yes' | 'no' | null;
 type Box = { x1: number; y1: number; x2: number; y2: number };
 
 type Tally = { confirmed: number; new: number; rejected: number };
-/** `photos`: distinct photos (of any source), `matches`: faces. */
-type Count = { photos: Tally; matches: Tally };
+/** `photos`: distinct photos (of any source), `matches`: faces, `copies`: copies of the person's library photos (zeros from an older Immeyes). */
+type Count = { photos: Tally; matches: Tally; copies: Tally };
+
+/** The two lists of the popup: the person's faces found elsewhere, and copies of the person's library photos. */
+type Kind = 'faces' | 'copies';
 
 /** Where a photo comes from: Flickr, a Telegram channel, a website. Rows without the field are Flickr's (older Immeyes). */
 type Source = 'flickr' | 'telegram' | 'site';
@@ -61,7 +68,8 @@ type Match = {
     sourceId: number | null;
     sourceName: string | null;
   };
-  face: Box;
+  /** Where the face is on the external picture; null for a copy (the whole picture is the match). */
+  face: Box | null;
   asset: { id: string; box: Box | null };
 };
 
@@ -170,13 +178,17 @@ function parseCount(value: unknown): Count | null {
     return null;
   }
 
-  return { photos: asTally(raw.photos), matches: asTally(raw.matches) };
+  return { photos: asTally(raw.photos), matches: asTally(raw.matches), copies: asTally(raw.copies) };
 }
 
-function parseMatch(value: unknown, verdict: Verdict, immeyesUrl: string): Match | null {
+/**
+ * A row of `/matches` (`kind` faces: `face`, `asset: { id, box }`) or of `/copies` (`assetId`, no boxes: the whole
+ * picture is the match).
+ */
+function parseMatch(value: unknown, verdict: Verdict, immeyesUrl: string, kind: Kind = 'faces'): Match | null {
   const raw = asRecord(value);
   const photo = asRecord(raw?.photo);
-  const asset = asRecord(raw?.asset);
+  const asset = kind === 'faces' ? asRecord(raw?.asset) : null;
 
   const id = raw?.id;
   const distance = raw?.distance;
@@ -186,8 +198,8 @@ function parseMatch(value: unknown, verdict: Verdict, immeyesUrl: string): Match
   const pathAlias = asString(photo?.pathAlias);
   const pageUrl = asHttpUrl(photo?.pageUrl);
   const thumbUrl = asImageUrl(photo?.thumbUrl, immeyesUrl);
-  const face = asBox(raw?.face);
-  const assetId = asString(asset?.id);
+  const face = kind === 'faces' ? asBox(raw?.face) : null;
+  const assetId = kind === 'faces' ? asString(asset?.id) : asString(raw?.assetId);
 
   if (
     typeof id !== 'number' ||
@@ -197,7 +209,7 @@ function parseMatch(value: unknown, verdict: Verdict, immeyesUrl: string): Match
     !owner ||
     !pageUrl ||
     !thumbUrl ||
-    !face ||
+    (kind === 'faces' && !face) ||
     !assetId
   ) {
     return null;
@@ -224,12 +236,12 @@ function parseMatch(value: unknown, verdict: Verdict, immeyesUrl: string): Match
 }
 
 /** Rows of a list; a malformed one is dropped instead of failing the popup. Not an array: no answer. */
-function parseMatches(value: unknown, verdict: Verdict, immeyesUrl: string): Match[] | null {
+function parseMatches(value: unknown, verdict: Verdict, immeyesUrl: string, kind: Kind): Match[] | null {
   if (!Array.isArray(value)) {
     return null;
   }
 
-  return value.flatMap((item) => parseMatch(item, verdict, immeyesUrl) ?? []);
+  return value.flatMap((item) => parseMatch(item, verdict, immeyesUrl, kind) ?? []);
 }
 
 async function getJson(url: string, timeoutMs: number): Promise<unknown> {
@@ -250,13 +262,16 @@ async function requestCount(immeyesUrl: string, personId: string): Promise<Count
   return parseCount(await getJson(url, COUNT_TIMEOUT_MS));
 }
 
+/** The faces list (`/matches`, cut at `MAX_DISTANCE`) or the copies list (`/copies`, cut by Immeyes at its own copy distance). */
 async function requestMatches(
   immeyesUrl: string,
   personId: string,
+  kind: Kind,
   show: 'yes' | 'new',
 ): Promise<Match[] | null> {
-  const url = `${personUrl(immeyesUrl, personId)}/matches?max=${MAX_DISTANCE}&show=${show}`;
-  return parseMatches(await getJson(url, LIST_TIMEOUT_MS), show === 'yes' ? 'yes' : null, immeyesUrl);
+  const path = kind === 'faces' ? `matches?max=${MAX_DISTANCE}&show=${show}` : `copies?show=${show}`;
+  const url = `${personUrl(immeyesUrl, personId)}/${path}`;
+  return parseMatches(await getJson(url, LIST_TIMEOUT_MS), show === 'yes' ? 'yes' : null, immeyesUrl, kind);
 }
 
 async function postVerdict(immeyesUrl: string, matchId: number, verdict: Verdict): Promise<boolean> {
@@ -350,14 +365,23 @@ function createLink(className: string, href: string, newTab: boolean): HTMLAncho
   return link;
 }
 
-function applyCount(button: HTMLButtonElement, { photos }: Count): void {
-  const total = photos.confirmed + photos.new;
+/**
+ * One number for both lists (faces and copies), so a person who only has copies is not shown as empty. A photo that is
+ * in both lists counts in both; the title says how the number is made up.
+ */
+function applyCount(button: HTMLButtonElement, { photos, copies }: Count): void {
+  const confirmed = photos.confirmed + copies.confirmed;
+  const fresh = photos.new + copies.new;
+  const rejected = photos.rejected + copies.rejected;
+  const total = confirmed + fresh;
+  const copyTotal = copies.confirmed + copies.new;
   button.textContent = `В інших джерелах (${total})`;
   button.classList.toggle('is-empty', total === 0);
   button.title =
     total === 0
       ? 'збігів немає'
-      : `підтверджених ${photos.confirmed}, нових ${photos.new}, відхилених ${photos.rejected}`;
+      : `підтверджених ${confirmed}, нових ${fresh}, відхилених ${rejected}` +
+        (copyTotal > 0 ? ` · з них копій фото: ${copyTotal}` : '');
 }
 
 /**
@@ -454,6 +478,11 @@ function createPicture(href: string, newTab: boolean, src: string, alt: string, 
 }
 
 type Mode = 'compare' | 'tiles';
+
+const KINDS: readonly { kind: Kind; label: string }[] = [
+  { kind: 'faces', label: 'Обличчя' },
+  { kind: 'copies', label: 'Копії' },
+];
 
 const MODES: readonly { mode: Mode; label: string }[] = [
   { mode: 'compare', label: 'порівняння' },
@@ -849,7 +878,19 @@ function createFilterBar(onChoose: (filter: Filter) => void): FilterBar {
   };
 }
 
-type Lists = { nodes: HTMLElement[]; setMode: (mode: Mode) => void };
+type Lists = {
+  nodes: HTMLElement[];
+  setMode: (mode: Mode) => void;
+  /** How many matches the list holds now: every one but those rejected with «ні». */
+  size: () => number;
+};
+
+/** Where the whole list of each kind is in Immeyes (the faces of the person, or the copies tab). */
+function listFooter(kind: Kind, immeyesUrl: string, personId: string): { href: string; text: string } {
+  return kind === 'faces'
+    ? { href: `${immeyesUrl}/flickr?person=${encodeURIComponent(personId)}`, text: 'усі збіги в Immeyes' }
+    : { href: `${immeyesUrl}/flickr?tab=copies`, text: 'усі копії в Immeyes' };
+}
 
 function createLists(
   immeyesUrl: string,
@@ -857,6 +898,9 @@ function createLists(
   confirmed: Match[],
   fresh: Match[],
   initialMode: Mode,
+  kind: Kind,
+  /** The list changed (a verdict, a filter): the popup repaints the numbers of its switch. */
+  onChange: () => void,
 ): Lists {
   const confirmedSection = createSection('Підтверджені');
   const freshSection = createSection('Нові');
@@ -866,6 +910,7 @@ function createLists(
     .sort((a, b) => a.distance - b.distance)
     .map((match) => ({ match, saving: false, failed: false, view: null }));
   let mode = initialMode;
+  let size = 0;
   // The choice as the user left it; what applies to the rows at hand is `resolveFilter` of it.
   let chosen = loadFilter();
 
@@ -906,6 +951,7 @@ function createLists(
   const refresh = () => {
     // A match rejected with «ні» is out of every count, as it is out of both lists.
     const loaded = entries.filter(({ match }) => match.verdict !== 'no').map(({ match }) => match);
+    size = loaded.length;
     const filter = resolveFilter(chosen, loaded);
     filterBar.paint(loaded, filter);
 
@@ -929,6 +975,7 @@ function createLists(
     empty.hidden = visible > 0;
     shown.hidden = visible === loaded.length;
     shown.textContent = shown.hidden ? '' : `показано ${visible} з ${loaded.length}`;
+    onChange();
   };
 
   // The one place a verdict is handled; cards and tiles only call it.
@@ -980,12 +1027,9 @@ function createLists(
   render();
 
   const footer = element('p', 'immich-ext-sources__footer');
-  const all = createLink(
-    'immich-ext-sources__all',
-    `${immeyesUrl}/flickr?person=${encodeURIComponent(personId)}`,
-    true,
-  );
-  all.textContent = 'усі збіги в Immeyes';
+  const where = listFooter(kind, immeyesUrl, personId);
+  const all = createLink('immich-ext-sources__all', where.href, true);
+  all.textContent = where.text;
   footer.append(shown, all);
 
   return {
@@ -996,6 +1040,7 @@ function createLists(
         render();
       }
     },
+    size: () => size,
   };
 }
 
@@ -1036,7 +1081,9 @@ export function openOtherSourcesPopup(immeyesUrl: string, personId: string): voi
 
   // «порівняння» / «плитка»: remembered between openings; applies to the lists as soon as they are there.
   let mode = loadMode();
-  let lists: Lists | null = null;
+  // The list of each kind; the copies one exists only when there is a copy of the person's photos.
+  const lists: Record<Kind, Lists | null> = { faces: null, copies: null };
+  let shownKind: Kind = 'faces';
 
   const modeSwitch = element('div', 'immich-ext-sources__modes');
   modeSwitch.setAttribute('role', 'group');
@@ -1054,7 +1101,8 @@ export function openOtherSourcesPopup(immeyesUrl: string, personId: string): voi
       mode = value;
       saveMode(value);
       paintModes();
-      lists?.setMode(value);
+      lists.faces?.setMode(value);
+      lists.copies?.setMode(value);
       // The layout is a different one: start from the top rather than at some arbitrary place of it.
       panel.scrollTop = 0;
     });
@@ -1072,8 +1120,49 @@ export function openOtherSourcesPopup(immeyesUrl: string, personId: string): voi
   paintModes();
   modeSwitch.append(...modeButtons);
 
+  // «Обличчя (N)» / «Копії (M)»: which list the body shows. Hidden until the lists are there, and without copies.
+  const viewSwitch = element('div', 'immich-ext-sources__modes immich-ext-sources__views');
+  viewSwitch.setAttribute('role', 'group');
+  viewSwitch.setAttribute('aria-label', 'Список');
+  viewSwitch.hidden = true;
+
+  const viewButtons = KINDS.map(({ kind, label }) => {
+    const button = element('button', 'immich-ext-sources__mode', label);
+    button.type = 'button';
+    button.dataset.view = kind;
+    button.addEventListener('click', () => showKind(kind));
+    return button;
+  });
+
+  viewSwitch.append(...viewButtons);
+
+  /** The labels carry the live size of each list (a «ні» takes a match out of it). */
+  const paintViews = () => {
+    for (const button of viewButtons) {
+      const { kind, label } = KINDS.find(({ kind: value }) => value === button.dataset.view)!;
+      const active = kind === shownKind;
+      button.textContent = `${label} (${lists[kind]?.size() ?? 0})`;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+  };
+
+  const showKind = (kind: Kind) => {
+    const next = lists[kind];
+
+    if (!next || kind === shownKind) {
+      return;
+    }
+
+    shownKind = kind;
+    body.replaceChildren(...next.nodes);
+    paintViews();
+    // A different list: start from its top rather than at the place the other one was left.
+    panel.scrollTop = 0;
+  };
+
   const header = element('div', 'immich-ext-person-card-modal__header');
-  header.append(title, modeSwitch, closeButton);
+  header.append(title, viewSwitch, modeSwitch, closeButton);
 
   const body = element('div', 'immich-ext-person-card-modal__body');
   body.appendChild(element('p', 'immich-ext-sources__status', 'Рахую…'));
@@ -1096,27 +1185,46 @@ export function openOtherSourcesPopup(immeyesUrl: string, personId: string): voi
   removeKeyListener = () => document.removeEventListener('keydown', onKeyDown, true);
 
   void Promise.all([
-    requestMatches(immeyesUrl, personId, 'yes'),
-    requestMatches(immeyesUrl, personId, 'new'),
-  ]).then(([confirmed, fresh]) => {
+    requestMatches(immeyesUrl, personId, 'faces', 'yes'),
+    requestMatches(immeyesUrl, personId, 'faces', 'new'),
+    requestMatches(immeyesUrl, personId, 'copies', 'yes'),
+    requestMatches(immeyesUrl, personId, 'copies', 'new'),
+  ]).then(([confirmed, fresh, copyConfirmed, copyFresh]) => {
     // Closed (or replaced by a newer popup) while the answers were on their way.
     if (!overlay.isConnected) {
       return;
     }
 
-    if (confirmed && fresh) {
+    if (!confirmed || !fresh) {
+      body.replaceChildren(element('p', 'immich-ext-sources__status', 'Immeyes недоступний'));
+      return;
+    }
+
+    const make = (kind: Kind, yes: Match[], now: Match[]) => {
       // A verdict saved between the two requests could put a match in both: the confirmed one wins.
-      const ids = new Set(confirmed.map((match) => match.id));
-      lists = createLists(
+      const ids = new Set(yes.map((match) => match.id));
+      return createLists(
         immeyesUrl,
         personId,
-        confirmed,
-        fresh.filter((match) => !ids.has(match.id)),
+        yes,
+        now.filter((match) => !ids.has(match.id)),
         mode,
+        kind,
+        paintViews,
       );
-      body.replaceChildren(...lists.nodes);
-    } else {
-      body.replaceChildren(element('p', 'immich-ext-sources__status', 'Immeyes недоступний'));
+    };
+
+    lists.faces = make('faces', confirmed, fresh);
+
+    // An Immeyes without the copies feature answers nothing for them, a person without copies gets no switch.
+    if (copyConfirmed && copyFresh && copyConfirmed.length + copyFresh.length > 0) {
+      lists.copies = make('copies', copyConfirmed, copyFresh);
     }
+
+    // Only copies to review: start there.
+    shownKind = lists.faces.size() === 0 && lists.copies ? 'copies' : 'faces';
+    body.replaceChildren(...lists[shownKind]!.nodes);
+    viewSwitch.hidden = !lists.copies;
+    paintViews();
   });
 }
