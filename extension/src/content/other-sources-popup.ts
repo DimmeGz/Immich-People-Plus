@@ -62,6 +62,8 @@ type Match = {
     ownerUrl: string | null;
     takenAt: Date | null;
     pageUrl: string;
+    /** The picture itself, for a website photo (Immeyes keeps the address it downloaded it from); null for Flickr and Telegram, and from an older Immeyes. */
+    imageUrl: string | null;
     /** Absolute: a path on Immeyes (a Telegram thumbnail) is already joined to the Immeyes URL. */
     thumbUrl: string;
     /** The Immeyes source (a Flickr user, a channel, a site) the photo was found by; null: deleted, or an older Immeyes. */
@@ -197,6 +199,7 @@ function parseMatch(value: unknown, verdict: Verdict, immeyesUrl: string, kind: 
   const ownerName = asString(photo?.ownerName);
   const pathAlias = asString(photo?.pathAlias);
   const pageUrl = asHttpUrl(photo?.pageUrl);
+  const imageUrl = asHttpUrl(photo?.imageUrl);
   const thumbUrl = asImageUrl(photo?.thumbUrl, immeyesUrl);
   const face = kind === 'faces' ? asBox(raw?.face) : null;
   const assetId = kind === 'faces' ? asString(asset?.id) : asString(raw?.assetId);
@@ -226,6 +229,7 @@ function parseMatch(value: unknown, verdict: Verdict, immeyesUrl: string, kind: 
       ownerUrl: ownerPageUrl(source, owner, ownerName, pathAlias),
       takenAt: asDate(photo?.takenAt),
       pageUrl,
+      imageUrl,
       thumbUrl,
       sourceId: asSourceId(photo?.sourceId),
       sourceName: asString(photo?.sourceName)?.trim() ?? null,
@@ -453,12 +457,27 @@ function createImage(alt: string, className: string): HTMLImageElement {
 /**
  * A square slot with the picture at its natural aspect and the face outlined. The frame hugs the
  * picture (`inline-block`), so the percentages of the box are fractions of the picture itself.
+ * The picture is the link (`href`); `extra.pageHref` adds a second link, a bar over the picture's bottom edge.
  */
-function createPicture(href: string, newTab: boolean, src: string, alt: string, box: Box | null): HTMLElement {
-  const slot = createLink('immich-ext-sources__slot', href, newTab);
+function createPicture(
+  href: string,
+  newTab: boolean,
+  src: string,
+  alt: string,
+  box: Box | null,
+  extra: { title?: string; pageHref?: string | null } = {},
+): HTMLElement {
+  const slot = element('div', 'immich-ext-sources__slot');
   const frame = element('span', 'immich-ext-sources__frame');
+  const link = createLink('immich-ext-sources__link', href, newTab);
   const image = createImage(alt, 'immich-ext-sources__image');
-  frame.appendChild(image);
+
+  if (extra.title) {
+    link.title = extra.title;
+  }
+
+  link.appendChild(image);
+  frame.appendChild(link);
 
   if (box) {
     const outline = element('span', 'immich-ext-sources__box');
@@ -470,6 +489,14 @@ function createPicture(href: string, newTab: boolean, src: string, alt: string, 
     outline.hidden = true;
     image.addEventListener('load', () => (outline.hidden = false));
     frame.appendChild(outline);
+  }
+
+  // Over the bottom edge of the picture itself (the frame hugs it), on hover or focus; a sibling of the link, links do not nest.
+  if (extra.pageHref) {
+    const page = createLink('immich-ext-sources__page', extra.pageHref, true);
+    page.textContent = 'На сторінку';
+    page.title = 'Відкрити сторінку, на якій знайдено фото';
+    frame.appendChild(page);
   }
 
   image.src = src;
@@ -670,7 +697,13 @@ function createCard(entry: Entry, onVerdict: VerdictHandler): View {
 
   const pictures = element('div', 'immich-ext-sources__pictures');
   pictures.append(
-    createPicture(photo.pageUrl, true, photo.thumbUrl, SOURCE_LABELS[photo.source], match.face),
+    // A website photo: the picture opens the file and «На сторінку» the page; any other (and an older Immeyes) opens its page, as before.
+    photo.imageUrl
+      ? createPicture(photo.imageUrl, true, photo.thumbUrl, SOURCE_LABELS[photo.source], match.face, {
+          title: 'Відкрити зображення',
+          pageHref: photo.pageUrl,
+        })
+      : createPicture(photo.pageUrl, true, photo.thumbUrl, SOURCE_LABELS[photo.source], match.face),
     createPicture(
       `/photos/${encodeURIComponent(asset.id)}`,
       false,
@@ -727,7 +760,8 @@ function createTile(entry: Entry, onVerdict: VerdictHandler): View {
   ]
     .filter(Boolean)
     .join(' · ');
-  const link = createLink('immich-ext-sources__tile-link', photo.pageUrl, true);
+  // A website photo opens the file, and the page is a bar over the top edge (the bottom one is the verdicts'), shown with it on hover or focus
+  const link = createLink('immich-ext-sources__tile-link', photo.imageUrl ?? photo.pageUrl, true);
   link.title = label;
   link.setAttribute('aria-label', label);
 
@@ -738,6 +772,13 @@ function createTile(entry: Entry, onVerdict: VerdictHandler): View {
   const badge = element('span', 'immich-ext-sources__badge', 'нове');
   const { root: verdicts, yes, no } = createVerdictButtons(entry, onVerdict, 'immich-ext-sources__tile-verdicts');
   frame.append(link, badge, verdicts);
+
+  if (photo.imageUrl) {
+    const page = createLink('immich-ext-sources__tile-page', photo.pageUrl, true);
+    page.textContent = 'На сторінку';
+    page.title = 'Відкрити сторінку, на якій знайдено фото';
+    frame.appendChild(page);
+  }
 
   const error = createErrorLine();
   root.append(frame, error);
